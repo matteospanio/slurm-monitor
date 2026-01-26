@@ -87,13 +87,13 @@ Goal: specific Visual implementation using Textual.
 
 Goal: Implement Vim-like navigation and the core "Tail" feature.
 
-- [ ] Task 5.1: Vim Navigation
+- [x] Task 5.1: Vim Navigation
 
   - Bind j/k to row selection movement.
   - Bind g/G to top/bottom scroll.
   - Verification: User can navigate the table without using arrow keys.
 
-- [ ] Task 5.2: The "Tail" Context Switch
+- [x] Task 5.2: The "Tail" Context Switch
 
   - Implement Enter key handler.
   - Use driver.suspend_application_mode() to drop to shell.

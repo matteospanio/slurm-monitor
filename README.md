@@ -9,7 +9,8 @@ A terminal-based user interface (TUI) application for monitoring and displaying 
 - 🔒 SSH-based remote command execution with robust error handling
 - ⚙️ Flexible configuration via JSON files
 - 📁 Intelligent log file path resolution with project-specific patterns
-- ⌨️ Keyboard-driven interface with Vim-like navigation (coming soon)
+- ⌨️ Keyboard-driven interface with Vim-like navigation
+- 🔍 Integrated log viewer with tail -f for real-time log monitoring
 - 💻 Intuitive terminal UI built with Textual
 
 ## Usage
@@ -28,7 +29,10 @@ slurm-monitor
 
 - `q` - Quit application
 - `r` - Manually refresh job data
-- `↑/↓` - Navigate through jobs
+- `j`/`k` - Navigate down/up (Vim-style)
+- `g`/`G` - Jump to top/bottom of list
+- `↑`/`↓` - Navigate through jobs (arrow keys)
+- `Enter` - View job logs with `tail -f` (press Ctrl+C to return)
 - `?` - Show help
 
 ### Configuration
@@ -72,6 +76,10 @@ This project is in active development. See [plan.md](plan.md) for the full devel
   - ✅ Task 4.1: App skeleton & header with connection status
   - ✅ Task 4.2: DataTable implementation with Rich styling
   - ✅ Task 4.3: Async data binding with automatic refresh
+
+- **Epic 5: Interaction & Control** ✅
+  - ✅ Task 5.1: Vim navigation (j/k, g/G keybindings)
+  - ✅ Task 5.2: Tail feature for viewing job logs
 
 ## Installation
 

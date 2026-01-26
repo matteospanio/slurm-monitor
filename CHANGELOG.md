@@ -49,5 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rich styling for job states (green=RUNNING, yellow=PENDING, red=FAILED, etc.).
 - Keyboard shortcuts: q (quit), r (refresh), ? (help).
 - Real-time status indicators with emoji icons.
+- Vim-style navigation keybindings (j/k for up/down, g/G for top/bottom).
+- Log viewing feature with Enter key to tail job logs.
+- App suspension using `with self.suspend()` for seamless shell integration.
+- SSH tail command execution with `-t` flag for proper TTY handling.
+- Automatic return to TUI after log viewing with state preservation.
+- Log path resolution integration for automatic log file discovery.
+- User-friendly error messages for missing log files or unresolved paths.
 - 20 unit tests for config loader covering JSON parsing and defaults.
 - 18 unit tests for log path resolver covering token replacement and patterns.

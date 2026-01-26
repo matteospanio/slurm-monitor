@@ -1,5 +1,6 @@
 """Main TUI application for Slurm Monitor."""
 
+import subprocess
 from datetime import datetime
 from typing import Optional
 
@@ -11,6 +12,7 @@ from textual.widgets import DataTable, Footer, Header, Label, Static
 
 from slurm_monitor.config import Config, ConfigLoader
 from slurm_monitor.job_aggregator import JobAggregator
+from slurm_monitor.log_path_resolver import LogPathResolver
 from slurm_monitor.squeue_parser import SlurmJob
 
 
@@ -132,6 +134,11 @@ class SlurmMonitorApp(App):
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         ("?", "help", "Help"),
+        ("j", "cursor_down", "Down"),
+        ("k", "cursor_up", "Up"),
+        ("g", "scroll_home", "Top"),
+        ("G", "scroll_end", "Bottom"),
+        ("enter", "view_logs", "View Logs"),
     ]
 
     def __init__(self, config: Optional[Config] = None):
@@ -147,6 +154,7 @@ class SlurmMonitorApp(App):
             self.config.remote_host,
             timeout=self.config.ssh_timeout,
         )
+        self.path_resolver = LogPathResolver(self.config)
         self.jobs: list[SlurmJob] = []
 
     def compose(self) -> ComposeResult:
@@ -226,13 +234,117 @@ class SlurmMonitorApp(App):
         Keybindings:
         - q: Quit application
         - r: Manually refresh data
-        - ↑/↓: Navigate jobs
+        - j/k: Navigate down/up (Vim-style)
+        - g/G: Jump to top/bottom
+        - Enter: View job logs (tail -f)
+        - ↑/↓: Navigate jobs (arrow keys)
         - ?: Show this help
 
         The display updates automatically every {} seconds.
         """.format(self.config.refresh_interval)
 
         self.notify(help_text.strip(), timeout=10)
+
+    def action_cursor_down(self) -> None:
+        """Move cursor down (Vim j key)."""
+        table = self.query_one(JobTable)
+        table.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up (Vim k key)."""
+        table = self.query_one(JobTable)
+        table.action_cursor_up()
+
+    def action_scroll_home(self) -> None:
+        """Scroll to top (Vim g key)."""
+        table = self.query_one(JobTable)
+        table.action_scroll_home()
+
+    def action_scroll_end(self) -> None:
+        """Scroll to bottom (Vim G key)."""
+        table = self.query_one(JobTable)
+        table.action_scroll_end()
+
+    def action_view_logs(self) -> None:
+        """View logs for the selected job using tail -f."""
+        table = self.query_one(JobTable)
+
+        # Get the selected job
+        if table.cursor_row is None or table.cursor_row < 0:
+            self.notify("No job selected", severity="warning", timeout=3)
+            return
+
+        if not self.jobs:
+            self.notify("No jobs available", severity="warning", timeout=3)
+            return
+
+        # Find the selected job
+        try:
+            selected_job = self.jobs[table.cursor_row]
+        except IndexError:
+            self.notify("Invalid job selection", severity="error", timeout=3)
+            return
+
+        # Resolve log path
+        log_path = self.path_resolver.resolve_path(
+            job_id=selected_job.job_id,
+            work_dir=selected_job.work_dir,
+        )
+
+        # Check if path contains unresolved tokens
+        if "{" in log_path:
+            self.notify(
+                f"Cannot resolve log path: {log_path}",
+                severity="error",
+                timeout=5,
+            )
+            return
+
+        # Suspend the app and run tail
+        self._tail_log_file(selected_job, log_path)
+
+    def _tail_log_file(self, job: SlurmJob, log_path: str) -> None:
+        """
+        Suspend app and tail the log file via SSH.
+
+        Args:
+            job: The SlurmJob to view logs for
+            log_path: Resolved path to the log file
+        """
+        with self.suspend():
+            # Build SSH tail command
+            ssh_cmd = [
+                "ssh",
+                "-t",
+                self.config.remote_host,
+                f"tail -f {log_path}",
+            ]
+
+            try:
+                # Show info before launching
+                print(f"\n📄 Viewing logs for job {job.job_id}: {job.name}")
+                print(f"📁 Log file: {log_path}")
+                print(f"🔗 Host: {self.config.remote_host}")
+                print("\n🛈  Press Ctrl+C to return to the monitor\n")
+                print("-" * 60)
+
+                # Run SSH tail command
+                subprocess.run(ssh_cmd)
+
+            except FileNotFoundError:
+                print("\n❌ Error: SSH command not found")
+                print("   Please ensure SSH is installed and in your PATH")
+            except KeyboardInterrupt:
+                print("\n\n✓ Returning to monitor...")
+            except Exception as e:
+                print(f"\n❌ Error: {e}")
+
+            # Wait for user to see any error messages
+            input("\nPress Enter to continue...")
+
+        # Refresh data after returning
+        self.notify("Returned from log viewer. Refreshing...", timeout=2)
+        self.refresh_data()
 
 
 def main(config: Optional[Config] = None) -> None:
