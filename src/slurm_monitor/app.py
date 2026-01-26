@@ -193,11 +193,8 @@ class SlurmMonitorApp(App):
             status.is_loading = True
             status.error_message = None
 
-            # Fetch jobs (run in worker to not block UI)
-            jobs = await self.run_worker(
-                self._fetch_jobs,
-                exclusive=True,
-            )
+            # Fetch jobs (run in thread to not block UI)
+            jobs = await self.run_in_thread(self._fetch_jobs)
 
             # Update state
             self.jobs = jobs
