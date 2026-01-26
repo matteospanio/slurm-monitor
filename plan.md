@@ -48,13 +48,13 @@ Goal: Reliably fetch and parse raw data from Slurm without blocking the main thr
 
 Goal: Make the application flexible enough to handle complex directory structures.
 
-- [ ] Task 3.1: Config Loader
+- [x] Task 3.1: Config Loader
 
   - Implement logic to load ~/.config/slurm_monitor/config.json.
   - Define defaults if file is missing.
   - Verification: App reads remote_host from JSON; falls back to defaults if file missing.
 
-- [ ] Task 3.2: Log Path Strategy Pattern
+- [x] Task 3.2: Log Path Strategy Pattern
 
   - Implement the logic to interpret {work_dir}, {job_id}, and {project_name} tokens.
   - Implement logic to check specific_projects mapping first, then default_pattern.

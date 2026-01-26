@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for parsing whitespace-delimited sacct output with flexible formatting.
 - Active jobs take precedence over historical data when duplicate job IDs exist.
 - Helper functions for filtering, sorting, and searching jobs.
+- Configuration system (`config.py`) with JSON-based config loading.
+- `Config` and `LogPathConfig` dataclasses for structured configuration.
+- `ConfigLoader` class with default path search and fallback to defaults.
+- Log path resolver (`log_path_resolver.py`) with token-based pattern matching.
+- `LogPathResolver` class supporting {job_id}, {work_dir}, and {project_name} tokens.
+- Project-specific log path patterns with automatic detection from work_dir.
+- Support for complex nested directory structures via configuration.
 - 24 unit tests for squeue parser with mocked SSH commands.
 - 29 unit tests for sacct parser covering various states and edge cases.
 - 28 unit tests for job aggregator covering merge logic and utilities.
+- 20 unit tests for config loader covering JSON parsing and defaults.
+- 18 unit tests for log path resolver covering token replacement and patterns.
