@@ -23,6 +23,10 @@ This project is in active development. See [plan.md](plan.md) for the full devel
   - ✅ Task 2.2: Sacct parser for historical job data
   - ✅ Task 2.3: Data aggregation service with automatic deduplication
 
+- **Epic 3: Configuration & Path Resolution** ✅
+  - ✅ Task 3.1: Config loader with JSON support and defaults
+  - ✅ Task 3.2: Log path strategy pattern with token replacement
+
 ## Installation
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
