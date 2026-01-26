@@ -16,7 +16,7 @@ Goal: Initialize the project structure, dependency management, and prove connect
   - Create directory structure: src/, tests/.
   - Verification: uv sync runs successfully; import textual works in a test script.
 
-- [ ] Task 1.2: SSH Wrapper Prototype
+- [x] Task 1.2: SSH Wrapper Prototype
 
   - Create a simple Python script using subprocess to run ssh <host> echo "success".
   - Handle ssh timeout and connection errors (e.g., host unreachable).
