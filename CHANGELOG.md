@@ -40,5 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 24 unit tests for squeue parser with mocked SSH commands.
 - 29 unit tests for sacct parser covering various states and edge cases.
 - 28 unit tests for job aggregator covering merge logic and utilities.
+- TUI application (`app.py`) built with Textual framework.
+- `SlurmMonitorApp` main application class with reactive UI.
+- `ConnectionStatus` widget displaying host, status, and last update time.
+- `JobTable` custom DataTable with color-coded job states.
+- Automatic data refresh with configurable interval.
+- Async data fetching using Textual workers to keep UI responsive.
+- Rich styling for job states (green=RUNNING, yellow=PENDING, red=FAILED, etc.).
+- Keyboard shortcuts: q (quit), r (refresh), ? (help).
+- Real-time status indicators with emoji icons.
 - 20 unit tests for config loader covering JSON parsing and defaults.
 - 18 unit tests for log path resolver covering token replacement and patterns.

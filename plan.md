@@ -64,20 +64,20 @@ Goal: Make the application flexible enough to handle complex directory structure
 
 Goal: specific Visual implementation using Textual.
 
-- [ ] Task 4.1: App Skeleton & Header
+- [x] Task 4.1: App Skeleton & Header
 
   - Create App class inheriting from textual.app.App.
   - Implement Header with: Connection Name, Last Updated Timestamp, and Loading Spinner.
   - Verification: App launches, shows TUI, and spinner animates.
 
-- [ ] Task 4.2: Data Table Implementation
+- [x] Task 4.2: Data Table Implementation
 
   - Implement DataTable widget.
   - Map data columns: ID, Name, Status, Time.
   - Apply Rich styling (Green for Running, Red for Fail, etc.).
   - Verification: Hardcoded mock data renders correctly with colors in the terminal.
 
-- [ ] Task 4.3: Async Data Binding
+- [x] Task 4.3: Async Data Binding
 
   - Connect Epic 2 (Data Engine) to Epic 4 (UI) using set_interval.
   - Ensure UI remains responsive while ssh command runs in background.

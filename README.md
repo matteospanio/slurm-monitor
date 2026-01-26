@@ -4,9 +4,50 @@ A terminal-based user interface (TUI) application for monitoring and displaying 
 
 ## Features
 
-- Real-time monitoring of Slurm jobs
-- SSH-based remote command execution with robust error handling
-- Intuitive terminal interface built with Textual
+- 🚀 Real-time monitoring of Slurm jobs with automatic refresh
+- 📊 Color-coded job states (RUNNING, PENDING, COMPLETED, FAILED, etc.)
+- 🔒 SSH-based remote command execution with robust error handling
+- ⚙️ Flexible configuration via JSON files
+- 📁 Intelligent log file path resolution with project-specific patterns
+- ⌨️ Keyboard-driven interface with Vim-like navigation (coming soon)
+- 💻 Intuitive terminal UI built with Textual
+
+## Usage
+
+Run the application:
+
+```bash
+# Using uv
+uv run slurm-monitor
+
+# Or after installation
+slurm-monitor
+```
+
+### Keyboard Shortcuts
+
+- `q` - Quit application
+- `r` - Manually refresh job data
+- `↑/↓` - Navigate through jobs
+- `?` - Show help
+
+### Configuration
+
+Create a config file at `~/.config/slurm_monitor/config.json`:
+
+```json
+{
+  "remote_host": "your-cluster.edu",
+  "ssh_timeout": 10,
+  "refresh_interval": 2,
+  "log_paths": {
+    "default_pattern": "{work_dir}/logs/{job_id}.out",
+    "specific_projects": {
+      "ml_project": "{work_dir}/ml/logs/{job_id}.log"
+    }
+  }
+}
+```
 
 ## Development Status
 
@@ -26,6 +67,11 @@ This project is in active development. See [plan.md](plan.md) for the full devel
 - **Epic 3: Configuration & Path Resolution** ✅
   - ✅ Task 3.1: Config loader with JSON support and defaults
   - ✅ Task 3.2: Log path strategy pattern with token replacement
+
+- **Epic 4: User Interface (Frontend)** ✅
+  - ✅ Task 4.1: App skeleton & header with connection status
+  - ✅ Task 4.2: DataTable implementation with Rich styling
+  - ✅ Task 4.3: Async data binding with automatic refresh
 
 ## Installation
 
