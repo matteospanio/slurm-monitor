@@ -32,7 +32,7 @@ Goal: Reliably fetch and parse raw data from Slurm without blocking the main thr
   - Create a parser to convert the pipe-delimited string into a list of Dictionaries/Objects.
   - Verification: Unit test with mocked stdout returns correct JSON structure for active jobs.
 
-- [ ] Task 2.2: Sacct Parser (History)
+- [x] Task 2.2: Sacct Parser (History)
 
   - Implement method to run: sacct -X --format=JobID,JobName,State,Elapsed,WorkDir --units=M -n.
   - Handle whitespace formatting specific to sacct.

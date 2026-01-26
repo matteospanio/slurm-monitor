@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite for SSH wrapper functionality.
 - pytest as development dependency for testing.
 - Squeue parser module (`squeue_parser.py`) for fetching and parsing Slurm job data.
+- Sacct parser module (`sacct_parser.py`) for fetching and parsing historical Slurm job data.
 - `SlurmJob` dataclass for structured job representation.
 - Support for parsing pipe-delimited squeue output into JSON-compatible structures.
+- Support for parsing whitespace-delimited sacct output with flexible formatting.
 - 24 unit tests for squeue parser with mocked SSH commands.
+- 29 unit tests for sacct parser covering various states and edge cases.
