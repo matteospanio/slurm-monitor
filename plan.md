@@ -38,7 +38,7 @@ Goal: Reliably fetch and parse raw data from Slurm without blocking the main thr
   - Handle whitespace formatting specific to sacct.
   - Verification: Unit test accurately parses a sample sacct output string into structured data.
 
-- [ ] Task 2.3: Data Aggregation Service
+- [x] Task 2.3: Data Aggregation Service
 
   - Create a class that merges squeue (active) and sacct (history) results.
   - Ensure active jobs take precedence over history if duplicates exist.
