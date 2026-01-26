@@ -56,5 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic return to TUI after log viewing with state preservation.
 - Log path resolution integration for automatic log file discovery.
 - User-friendly error messages for missing log files or unresolved paths.
+- Comprehensive SSH setup documentation in README.
+- SSH key generation guide (ssh-keygen, ssh-copy-id).
+- SSH ControlMaster optimization guide for faster polling.
+- Step-by-step verification instructions.
+- Example configuration file (config.example.json).
+- Comprehensive configuration examples document (docs/configuration-examples.md):
+  - Basic and standard configurations
+  - SSH host alias usage
+  - Project-specific log path patterns
+  - Complex directory structures
+  - High-frequency and slow-network configurations
+  - Token reference and common patterns
+  - Troubleshooting guide
+  - Best practices
 - 20 unit tests for config loader covering JSON parsing and defaults.
 - 18 unit tests for log path resolver covering token replacement and patterns.

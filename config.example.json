@@ -1,0 +1,12 @@
+{
+  "remote_host": "your-cluster.edu",
+  "ssh_timeout": 10,
+  "refresh_interval": 2,
+  "log_paths": {
+    "default_pattern": "{work_dir}/logs/{job_id}.out",
+    "specific_projects": {
+      "ml_project": "{work_dir}/ml/logs/{job_id}.log",
+      "simulation": "{work_dir}/sim/output/job_{job_id}.txt"
+    }
+  }
+}

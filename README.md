@@ -53,6 +53,8 @@ Create a config file at `~/.config/slurm_monitor/config.json`:
 }
 ```
 
+For more configuration examples and use cases, see [Configuration Examples](docs/configuration-examples.md).
+
 ## Development Status
 
 This project is in active development. See [plan.md](plan.md) for the full development roadmap.
@@ -81,6 +83,10 @@ This project is in active development. See [plan.md](plan.md) for the full devel
   - ✅ Task 5.1: Vim navigation (j/k, g/G keybindings)
   - ✅ Task 5.2: Tail feature for viewing job logs
 
+- **Epic 6: Documentation & Onboarding** ✅
+  - ✅ Task 6.1: SSH key setup guide with ControlMaster optimization
+  - ✅ Task 6.2: Configuration examples for various use cases
+
 ## Installation
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
@@ -95,6 +101,72 @@ uv sync
 
 # Run tests
 uv run pytest
+```
+
+## SSH Setup
+
+For seamless operation, you need passwordless SSH access to your Slurm cluster.
+
+### 1. Generate SSH Key (if you don't have one)
+
+```bash
+# Generate a new SSH key pair
+ssh-keygen -t ed25519 -C "your_email@example.com"
+
+# Press Enter to accept the default location (~/.ssh/id_ed25519)
+# Optionally set a passphrase for added security
+```
+
+### 2. Copy Your Public Key to the Cluster
+
+```bash
+# Copy your public key to the remote cluster
+ssh-copy-id your-username@your-cluster.edu
+
+# Test the connection (should not ask for password)
+ssh your-username@your-cluster.edu
+```
+
+### 3. Configure SSH (Optional but Recommended)
+
+Create or edit `~/.ssh/config` to simplify connections:
+
+```ssh-config
+Host slurm-cluster
+    HostName your-cluster.edu
+    User your-username
+    IdentityFile ~/.ssh/id_ed25519
+
+    # ControlMaster for faster connections (optional optimization)
+    ControlMaster auto
+    ControlPath ~/.ssh/control-%r@%h:%p
+    ControlPersist 10m
+```
+
+**Benefits of ControlMaster:**
+- Reuses existing SSH connections
+- Dramatically faster polling (no TCP handshake overhead)
+- Reduces load on SSH server
+- Improves responsiveness of the TUI
+
+Then in your config.json, use the host alias:
+
+```json
+{
+  "remote_host": "slurm-cluster",
+  ...
+}
+```
+
+### 4. Verify Setup
+
+Test that everything works:
+
+```bash
+# Should connect without password
+ssh slurm-cluster 'squeue --me'
+
+# Should show your jobs (or empty if none running)
 ```
 
 ## Development

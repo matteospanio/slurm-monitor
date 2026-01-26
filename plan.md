@@ -104,12 +104,12 @@ Goal: Implement Vim-like navigation and the core "Tail" feature.
 
 Goal: Ensure the user can actually connect.
 
-- [ ] Task 6.1: SSH Key Guide
+- [x] Task 6.1: SSH Key Guide
 
   - Write README.md section on ssh-keygen and ssh-copy-id.
   - Explain ~/.ssh/config ControlMaster (optional optimization for faster polling).
   - Verification: A standard user can follow instructions to set up password-less auth.
 
-- [ ] Task 6.2: Config Examples
+- [x] Task 6.2: Config Examples
 
   - Provide config.example.json covering standard and complex project structures.
