@@ -21,3 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH wrapper module (`ssh_wrapper.py`) with timeout and connection error handling.
 - Comprehensive test suite for SSH wrapper functionality.
 - pytest as development dependency for testing.
+- Squeue parser module (`squeue_parser.py`) for fetching and parsing Slurm job data.
+- `SlurmJob` dataclass for structured job representation.
+- Support for parsing pipe-delimited squeue output into JSON-compatible structures.
+- 24 unit tests for squeue parser with mocked SSH commands.

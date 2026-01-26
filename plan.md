@@ -26,7 +26,7 @@ Goal: Initialize the project structure, dependency management, and prove connect
 
 Goal: Reliably fetch and parse raw data from Slurm without blocking the main thread.
 
-- [ ] Task 2.1: Squeue Parser
+- [x] Task 2.1: Squeue Parser
 
   - Implement method to run: squeue --me -o "%i|%j|%T|%M|%o|%Z" --noheader.
   - Create a parser to convert the pipe-delimited string into a list of Dictionaries/Objects.
