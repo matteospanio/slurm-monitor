@@ -183,7 +183,7 @@ class SlurmMonitorApp(App):
         # Initial data load
         self.refresh_data()
 
-    async def refresh_data(self) -> None:
+    def refresh_data(self) -> None:
         """Fetch and update job data."""
         status = self.query_one(ConnectionStatus)
         table = self.query_one(JobTable)
@@ -193,8 +193,10 @@ class SlurmMonitorApp(App):
             status.is_loading = True
             status.error_message = None
 
-            # Fetch jobs (run in thread to not block UI)
-            jobs = await self.run_in_thread(self._fetch_jobs)
+            # Fetch jobs synchronously
+            # Note: In Textual, this runs in the event loop but SSH operations
+            # are typically fast enough with ControlMaster
+            jobs = self.aggregator.fetch_all_jobs()
 
             # Update state
             self.jobs = jobs
@@ -208,15 +210,6 @@ class SlurmMonitorApp(App):
             status.is_loading = False
             status.error_message = str(e)
             self.notify(f"Error fetching jobs: {e}", severity="error", timeout=5)
-
-    def _fetch_jobs(self) -> list[SlurmJob]:
-        """
-        Fetch jobs from the aggregator.
-
-        Returns:
-            List of SlurmJob objects
-        """
-        return self.aggregator.fetch_all_jobs()
 
     def action_refresh(self) -> None:
         """Manually refresh the job data."""
