@@ -1,0 +1,20 @@
+[project]
+name = "slurm-monitor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "matteospanio", email = "spanio@dei.unipd.it" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=14.3.1",
+    "textual>=7.4.0",
+]
+
+[project.scripts]
+slurm-monitor = "slurm_monitor:main"
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
