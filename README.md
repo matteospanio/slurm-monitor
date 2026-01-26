@@ -14,9 +14,14 @@ This project is in active development. See [plan.md](plan.md) for the full devel
 
 ### Completed Features
 
-- **Epic 1: Foundation & Environment Setup**
+- **Epic 1: Foundation & Environment Setup** ✅
   - ✅ Task 1.1: Project initialization with uv
   - ✅ Task 1.2: SSH wrapper prototype with timeout and error handling
+
+- **Epic 2: Core Data Engine (Backend)** ✅
+  - ✅ Task 2.1: Squeue parser for active job data
+  - ✅ Task 2.2: Sacct parser for historical job data
+  - ✅ Task 2.3: Data aggregation service with automatic deduplication
 
 ## Installation
 
