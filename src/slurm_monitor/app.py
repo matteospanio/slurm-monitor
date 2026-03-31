@@ -1,5 +1,6 @@
 """Main TUI application for Slurm Monitor."""
 
+import shlex
 import subprocess
 from datetime import datetime
 from typing import Optional
@@ -9,6 +10,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label, Static
+from textual.worker import Worker, get_current_worker
 
 from slurm_monitor.config import Config, ConfigLoader
 from slurm_monitor.job_aggregator import JobAggregator
@@ -156,6 +158,7 @@ class SlurmMonitorApp(App):
         )
         self.path_resolver = LogPathResolver(self.config)
         self.jobs: list[SlurmJob] = []
+        self._refresh_in_progress = False
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -184,32 +187,48 @@ class SlurmMonitorApp(App):
         self.refresh_data()
 
     def refresh_data(self) -> None:
-        """Fetch and update job data."""
+        """Trigger an async job data refresh (non-blocking)."""
+        if self._refresh_in_progress:
+            return
+
+        self._refresh_in_progress = True
         status = self.query_one(ConnectionStatus)
-        table = self.query_one(JobTable)
+        status.is_loading = True
+        status.error_message = None
 
-        try:
-            # Set loading state
-            status.is_loading = True
-            status.error_message = None
+        self._fetch_worker = self.run_worker(
+            self._fetch_jobs_in_thread, thread=True
+        )
 
-            # Fetch jobs synchronously
-            # Note: In Textual, this runs in the event loop but SSH operations
-            # are typically fast enough with ControlMaster
-            jobs = self.aggregator.fetch_all_jobs()
+    def _fetch_jobs_in_thread(self) -> list[SlurmJob]:
+        """Fetch jobs in a background thread so the UI stays responsive."""
+        return self.aggregator.fetch_all_jobs()
 
-            # Update state
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Handle worker completion to update the UI on the main thread."""
+        if event.worker.name != "_fetch_jobs_in_thread":
+            return
+
+        status = self.query_one(ConnectionStatus)
+
+        if event.state == "success":
+            jobs = event.worker.result
             self.jobs = jobs
             status.is_loading = False
             status.last_updated = datetime.now().strftime("%H:%M:%S")
-
-            # Update table
-            table.update_jobs(jobs)
-
-        except Exception as e:
+            self.query_one(JobTable).update_jobs(jobs)
+            self._refresh_in_progress = False
+        elif event.state == "error":
+            error = event.worker.error
             status.is_loading = False
-            status.error_message = str(e)
-            self.notify(f"Error fetching jobs: {e}", severity="error", timeout=5)
+            status.error_message = str(error)
+            self.notify(
+                f"Error fetching jobs: {error}", severity="error", timeout=5
+            )
+            self._refresh_in_progress = False
+        elif event.state == "cancelled":
+            status.is_loading = False
+            self._refresh_in_progress = False
 
     def action_refresh(self) -> None:
         """Manually refresh the job data."""
@@ -307,7 +326,7 @@ class SlurmMonitorApp(App):
                 "ssh",
                 "-t",
                 self.config.remote_host,
-                f"tail -f {log_path}",
+                f"tail -f {shlex.quote(log_path)}",
             ]
 
             try:

@@ -1,6 +1,5 @@
 """Parser for Slurm sacct command output."""
 
-import re
 from typing import Optional
 
 from slurm_monitor.ssh_wrapper import execute_ssh_command
