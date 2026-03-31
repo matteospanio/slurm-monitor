@@ -113,3 +113,29 @@ Goal: Ensure the user can actually connect.
 - [x] Task 6.2: Config Examples
 
   - Provide config.example.json covering standard and complex project structures.
+
+## 🐛 Epic 7: Bug Fixes & Performance
+
+Goal: Fix bugs and performance issues found during usage.
+
+- [x] Task 7.1: Fix UI Freezing During Refresh
+
+  - Moved SSH fetch calls from the synchronous event loop to a Textual `run_worker(thread=True)` background thread.
+  - Added `_refresh_in_progress` guard to prevent overlapping refresh cycles.
+  - Verification: UI stays responsive during SSH calls; no concurrent refresh pile-up.
+
+- [x] Task 7.2: Fix Time Sorting Bug
+
+  - Replaced string-based time comparison in `sort_jobs_by_time()` with numeric parsing via `_time_to_seconds()`.
+  - Supports MM:SS, HH:MM:SS, and D-HH:MM:SS formats.
+  - Verification: 10 new unit tests pass covering all time formats and edge cases.
+
+- [x] Task 7.3: Fix Shell Injection in Tail Command
+
+  - Applied `shlex.quote()` to the log path in the SSH tail command.
+  - Verification: Paths with special characters are safely escaped.
+
+- [x] Task 7.4: Remove Unused Import
+
+  - Removed unused `import re` from `sacct_parser.py`.
+  - Verification: All 139 tests pass.

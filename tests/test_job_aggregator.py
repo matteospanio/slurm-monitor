@@ -6,6 +6,7 @@ import pytest
 
 from slurm_monitor.job_aggregator import (
     JobAggregator,
+    _time_to_seconds,
     filter_jobs_by_state,
     get_job_by_id,
     merge_jobs,
@@ -201,6 +202,70 @@ class TestSortJobsByTime:
         assert result[0].time == "00:30:00"
         assert result[1].time == "01:00:00"
         assert result[2].time == "02:00:00"
+
+    def test_sort_mixed_length_times(self):
+        """Test sorting times where string sort would fail (e.g. 9:xx vs 10:xx)."""
+        jobs = [
+            SlurmJob("1", "job1", "RUNNING", "02:00:00", "/home/user"),
+            SlurmJob("2", "job2", "RUNNING", "10:30:00", "/home/user"),
+            SlurmJob("3", "job3", "RUNNING", "01:00:00", "/home/user"),
+        ]
+
+        result = sort_jobs_by_time(jobs)
+
+        assert result[0].time == "10:30:00"
+        assert result[1].time == "02:00:00"
+        assert result[2].time == "01:00:00"
+
+    def test_sort_with_day_prefix(self):
+        """Test sorting times with day-prefixed format (D-HH:MM:SS)."""
+        jobs = [
+            SlurmJob("1", "job1", "RUNNING", "1-02:00:00", "/home/user"),
+            SlurmJob("2", "job2", "RUNNING", "00:30:00", "/home/user"),
+            SlurmJob("3", "job3", "RUNNING", "2-10:00:00", "/home/user"),
+        ]
+
+        result = sort_jobs_by_time(jobs)
+
+        assert result[0].time == "2-10:00:00"
+        assert result[1].time == "1-02:00:00"
+        assert result[2].time == "00:30:00"
+
+    def test_sort_with_mm_ss_format(self):
+        """Test sorting times in MM:SS format."""
+        jobs = [
+            SlurmJob("1", "job1", "RUNNING", "05:30", "/home/user"),
+            SlurmJob("2", "job2", "RUNNING", "01:00:00", "/home/user"),
+            SlurmJob("3", "job3", "RUNNING", "10:00", "/home/user"),
+        ]
+
+        result = sort_jobs_by_time(jobs)
+
+        assert result[0].time == "01:00:00"
+        assert result[1].time == "10:00"
+        assert result[2].time == "05:30"
+
+
+class TestTimeToSeconds:
+    """Test suite for _time_to_seconds helper function."""
+
+    def test_hhmmss(self):
+        assert _time_to_seconds("01:23:45") == 1 * 3600 + 23 * 60 + 45
+
+    def test_mmss(self):
+        assert _time_to_seconds("05:30") == 5 * 60 + 30
+
+    def test_day_prefix(self):
+        assert _time_to_seconds("2-10:00:00") == 2 * 86400 + 10 * 3600
+
+    def test_zero(self):
+        assert _time_to_seconds("00:00:00") == 0
+
+    def test_invalid_returns_zero(self):
+        assert _time_to_seconds("invalid") == 0
+
+    def test_empty_returns_zero(self):
+        assert _time_to_seconds("") == 0
 
 
 class TestFilterJobsByState:

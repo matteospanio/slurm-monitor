@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > The *Unreleased* section is for changes that are not yet released, but are going to be released in the next version.
 
-## [Unreleased] - 2026-01-26
+## [Unreleased] - 2026-03-31
+
+### Fixed
+
+- **Critical**: Made `refresh_data()` non-blocking by running SSH fetches in a background worker thread, preventing UI freezes during data refresh.
+- Added overlap guard to prevent multiple concurrent refresh calls from piling up when SSH is slow.
+- Fixed `sort_jobs_by_time()` to parse time strings numerically instead of using broken string comparison (e.g. "9:00:00" no longer sorts after "10:00:00"). Supports MM:SS, HH:MM:SS, and D-HH:MM:SS formats.
+- Fixed shell injection vulnerability in log tail command by escaping the log path with `shlex.quote()`.
+- Removed unused `import re` in `sacct_parser.py`.
+
+## [0.1.0] - 2026-01-26
 
 ### Added
 
