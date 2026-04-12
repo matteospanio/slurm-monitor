@@ -157,12 +157,33 @@ class JobDetailScreen(Screen):
                     text.append("\n  Usage:     ", style="dim")
                     text.append_text(_render_bar(d.mem_percentage))
 
+            # GPUs
+            if d.num_gpus > 0:
+                text.append("\n\n")
+                text.append("GPUs", style="bold underline")
+                gpu_label = f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                text.append(f"\n  Allocated: ", style="dim")
+                text.append(gpu_label)
+                if d.gpus:
+                    for gpu in d.gpus:
+                        text.append(f"\n  GPU {gpu.index}:    ", style="dim")
+                        text.append(f"{gpu.name}  ", style="")
+                        text.append("Util: ", style="dim")
+                        text.append_text(_render_bar(gpu.utilization))
+                        text.append(f"\n             Mem:  ", style="dim")
+                        text.append(f"{gpu.mem_used_mb}M / {gpu.mem_total_mb}M  ")
+                        text.append_text(_render_bar(gpu.mem_percentage))
+
             # Resources
             text.append("\n\n")
             text.append("Resources", style="bold underline")
             if d.num_cpus:
                 text.append("\n  CPUs:      ", style="dim")
                 text.append(str(d.num_cpus))
+            if d.num_gpus:
+                text.append("\n  GPUs:      ", style="dim")
+                gpu_label = f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                text.append(gpu_label)
             if d.partition:
                 text.append("\n  Partition: ", style="dim")
                 text.append(d.partition)

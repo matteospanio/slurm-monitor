@@ -208,6 +208,14 @@ Goal: Show rich job resource usage (time, memory, CPUs) and use real log paths f
   - Removed detail-fetching-on-cursor-move from app.py (detail screen manages its own fetch).
   - Verification: 208 tests pass; 3-screen navigation works correctly.
 
+- [x] Task 9.5: GPU Utilization Display
+
+  - Added `GpuInfo` dataclass and `parse_tres_gpu()` to extract GPU count/type from TRES.
+  - `fetch_job_details()` runs `srun --jobid=<id> --overlap nvidia-smi` for running GPU jobs.
+  - `parse_nvidia_smi_output()` parses per-GPU utilization and memory usage.
+  - `JobDetailScreen` shows GPU section with per-GPU utilization bars and memory bars.
+  - Verification: 219 tests pass; GPU jobs show live utilization data.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.

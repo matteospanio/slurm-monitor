@@ -1,11 +1,28 @@
-"""Parser for Slurm scontrol show job output and sstat memory data."""
+"""Parser for Slurm scontrol show job output, sstat, and GPU data."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from slurm_monitor.job_aggregator import time_to_seconds
 from slurm_monitor.ssh_wrapper import SSHClient
+
+
+@dataclass
+class GpuInfo:
+    """Usage info for a single GPU."""
+
+    index: int = 0
+    name: str = ""
+    utilization: int = 0  # percentage 0-100
+    mem_used_mb: int = 0
+    mem_total_mb: int = 0
+
+    @property
+    def mem_percentage(self) -> float:
+        if self.mem_total_mb > 0:
+            return round(self.mem_used_mb / self.mem_total_mb * 100, 1)
+        return 0.0
 
 
 @dataclass
@@ -19,6 +36,9 @@ class JobDetails:
     mem_used: str = ""
     mem_percentage: float = 0.0
     num_cpus: int = 0
+    num_gpus: int = 0
+    gpu_type: str = ""
+    gpus: list[GpuInfo] = field(default_factory=list)
     partition: str = ""
     node_list: str = ""
     submit_time: str = ""
@@ -118,7 +138,66 @@ def format_mem_human(mem_bytes: int) -> str:
     return f"{value:.1f}P"
 
 
-def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "") -> JobDetails:
+def parse_tres_gpu(tres_str: str) -> tuple[int, str]:
+    """Extract GPU count and type from a TRES string.
+
+    Examples:
+        'cpu=20,mem=100G,gres/gpu=4,gres/gpu:l40s=4' -> (4, 'l40s')
+        'cpu=12,mem=512G' -> (0, '')
+
+    Returns:
+        Tuple of (gpu_count, gpu_type)
+    """
+    gpu_count = 0
+    gpu_type = ""
+    for part in tres_str.split(","):
+        # Match gres/gpu:type=N (specific type)
+        m = re.match(r"gres/gpu:(\w+)=(\d+)", part)
+        if m:
+            gpu_type = m.group(1)
+            gpu_count = int(m.group(2))
+            continue
+        # Match gres/gpu=N (generic count, only if no typed match yet)
+        m = re.match(r"gres/gpu=(\d+)", part)
+        if m and gpu_count == 0:
+            gpu_count = int(m.group(1))
+    return gpu_count, gpu_type
+
+
+def parse_nvidia_smi_output(output: str) -> list[GpuInfo]:
+    """Parse nvidia-smi CSV output into GpuInfo list.
+
+    Expected format (per line):
+        index, name, utilization.gpu, memory.used, memory.total
+
+    Args:
+        output: Raw nvidia-smi --format=csv,noheader,nounits output
+
+    Returns:
+        List of GpuInfo objects
+    """
+    gpus = []
+    for line in output.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 5:
+            continue
+        try:
+            gpus.append(GpuInfo(
+                index=int(parts[0]),
+                name=parts[1],
+                utilization=int(parts[2]),
+                mem_used_mb=int(parts[3]),
+                mem_total_mb=int(parts[4]),
+            ))
+        except (ValueError, IndexError):
+            continue
+    return gpus
+
+
+def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "", gpus: Optional[list[GpuInfo]] = None) -> JobDetails:
     """Build a JobDetails from parsed scontrol data and optional sstat memory.
 
     Args:
@@ -145,6 +224,9 @@ def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "") -> 
     mem_used_bytes = parse_mem_bytes(mem_used_raw)
     mem_pct = (mem_used_bytes / mem_req_bytes * 100) if mem_req_bytes > 0 else 0.0
 
+    # GPU info from TRES
+    gpu_count, gpu_type = parse_tres_gpu(req_tres)
+
     return JobDetails(
         time_limit=time_limit,
         run_time=run_time,
@@ -153,6 +235,9 @@ def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "") -> 
         mem_used=format_mem_human(mem_used_bytes) if mem_used_bytes else "",
         mem_percentage=round(mem_pct, 1),
         num_cpus=int(scontrol_data.get("NumCPUs", "0") or "0"),
+        num_gpus=gpu_count,
+        gpu_type=gpu_type,
+        gpus=gpus or [],
         partition=scontrol_data.get("Partition", ""),
         node_list=scontrol_data.get("NodeList", ""),
         submit_time=scontrol_data.get("SubmitTime", ""),
@@ -186,10 +271,12 @@ def fetch_job_details(
     if not scontrol_data:
         return None
 
-    # Try to get actual memory usage for running jobs
+    # For running jobs, fetch live stats
     mem_used_raw = ""
+    gpu_list: list[GpuInfo] = []
     state = scontrol_data.get("JobState", "")
     if state == "RUNNING":
+        # Memory usage via sstat
         try:
             sstat_out = client.execute(
                 f"sstat --format=MaxRSS -j {job_id}.batch --noheader 2>/dev/null",
@@ -199,4 +286,20 @@ def fetch_job_details(
         except Exception:
             pass
 
-    return build_job_details(scontrol_data, mem_used_raw)
+        # GPU utilization via nvidia-smi (only if job uses GPUs)
+        req_tres = scontrol_data.get("ReqTRES", "")
+        gpu_count, _ = parse_tres_gpu(req_tres)
+        if gpu_count > 0:
+            try:
+                nvidia_out = client.execute(
+                    f"srun --jobid={job_id} --overlap "
+                    "nvidia-smi --query-gpu=index,name,utilization.gpu,"
+                    "memory.used,memory.total "
+                    "--format=csv,noheader,nounits 2>/dev/null",
+                    timeout,
+                )
+                gpu_list = parse_nvidia_smi_output(nvidia_out)
+            except Exception:
+                pass
+
+    return build_job_details(scontrol_data, mem_used_raw, gpu_list)

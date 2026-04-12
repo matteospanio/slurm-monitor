@@ -6,12 +6,15 @@ import pytest
 
 from slurm_monitor.config import SSHConfig
 from slurm_monitor.scontrol_parser import (
+    GpuInfo,
     JobDetails,
     build_job_details,
     fetch_job_details,
     format_mem_human,
     parse_mem_bytes,
+    parse_nvidia_smi_output,
     parse_scontrol_output,
+    parse_tres_gpu,
     parse_tres_mem,
 )
 from slurm_monitor.ssh_wrapper import SSHClient, SSHConnectionError
@@ -209,3 +212,92 @@ class TestFetchJobDetails:
         mock_exec.assert_called_once()
         assert details is not None
         assert details.mem_used == ""
+
+    def test_gpu_job_fetches_nvidia_smi(self):
+        gpu_output = SCONTROL_OUTPUT.replace(
+            "ReqTRES=cpu=12,mem=512G,node=1,billing=12",
+            "ReqTRES=cpu=20,mem=100G,node=1,billing=20,gres/gpu=4,gres/gpu:l40s=4",
+        )
+        config = SSHConfig(host="testhost")
+        client = SSHClient(config)
+
+        with patch.object(client, "execute") as mock_exec:
+            mock_exec.side_effect = [
+                gpu_output,  # scontrol
+                "300876720K",  # sstat
+                "0, NVIDIA L40S, 100, 43299, 46068\n"
+                "1, NVIDIA L40S, 95, 43315, 46068",  # nvidia-smi
+            ]
+            details = fetch_job_details(client, "4151838")
+
+        assert details is not None
+        assert details.num_gpus == 4
+        assert details.gpu_type == "l40s"
+        assert len(details.gpus) == 2
+        assert details.gpus[0].utilization == 100
+        assert details.gpus[1].mem_used_mb == 43315
+
+
+class TestParseTresGpu:
+    def test_typed_gpu(self):
+        count, gtype = parse_tres_gpu("cpu=20,mem=100G,gres/gpu=4,gres/gpu:l40s=4")
+        assert count == 4
+        assert gtype == "l40s"
+
+    def test_generic_gpu(self):
+        count, gtype = parse_tres_gpu("cpu=4,mem=16G,gres/gpu=1")
+        assert count == 1
+        assert gtype == ""
+
+    def test_no_gpu(self):
+        count, gtype = parse_tres_gpu("cpu=12,mem=512G,node=1")
+        assert count == 0
+        assert gtype == ""
+
+    def test_empty_string(self):
+        count, gtype = parse_tres_gpu("")
+        assert count == 0
+        assert gtype == ""
+
+
+class TestParseNvidiaSmiOutput:
+    def test_multi_gpu(self):
+        output = (
+            "0, NVIDIA L40S, 100, 43299, 46068\n"
+            "1, NVIDIA L40S, 95, 43315, 46068\n"
+            "2, NVIDIA L40S, 80, 43295, 46068\n"
+            "3, NVIDIA L40S, 50, 10000, 46068"
+        )
+        gpus = parse_nvidia_smi_output(output)
+        assert len(gpus) == 4
+        assert gpus[0].index == 0
+        assert gpus[0].name == "NVIDIA L40S"
+        assert gpus[0].utilization == 100
+        assert gpus[0].mem_used_mb == 43299
+        assert gpus[0].mem_total_mb == 46068
+        assert gpus[3].utilization == 50
+
+    def test_single_gpu(self):
+        output = "0, Tesla V100, 75, 8000, 16384"
+        gpus = parse_nvidia_smi_output(output)
+        assert len(gpus) == 1
+        assert gpus[0].name == "Tesla V100"
+        assert gpus[0].mem_percentage == pytest.approx(48.8, abs=0.1)
+
+    def test_empty_output(self):
+        assert parse_nvidia_smi_output("") == []
+
+    def test_malformed_line_skipped(self):
+        output = "garbage\n0, GPU, 50, 1000, 2000"
+        gpus = parse_nvidia_smi_output(output)
+        assert len(gpus) == 1
+
+
+class TestGpuInfo:
+    def test_mem_percentage(self):
+        gpu = GpuInfo(index=0, name="L40S", utilization=100, mem_used_mb=43299, mem_total_mb=46068)
+        assert gpu.mem_percentage == pytest.approx(94.0, abs=0.1)
+
+    def test_mem_percentage_zero_total(self):
+        gpu = GpuInfo(index=0, name="L40S", utilization=0, mem_used_mb=0, mem_total_mb=0)
+        assert gpu.mem_percentage == 0.0
