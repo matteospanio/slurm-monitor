@@ -1,152 +1,305 @@
 """Tests for SSH wrapper functionality."""
 
-import subprocess
-from unittest.mock import MagicMock, patch
+import socket
+from unittest.mock import MagicMock, patch, PropertyMock
 
+import paramiko
 import pytest
 
+from slurm_monitor.config import SSHConfig
 from slurm_monitor.ssh_wrapper import (
+    SSHClient,
     SSHConnectionError,
     SSHTimeoutError,
-    check_connection,
-    execute_ssh_command,
 )
 
 
-class TestExecuteSSHCommand:
-    """Test suite for execute_ssh_command function."""
+@pytest.fixture
+def ssh_config():
+    return SSHConfig(host="testhost")
 
-    def test_successful_connection(self):
-        """Test successful SSH connection returns expected output."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="success\n", stderr="", returncode=0
+
+@pytest.fixture
+def ssh_config_full():
+    return SSHConfig(
+        host="testhost",
+        port=2222,
+        username="testuser",
+        key_filename="~/.ssh/id_test",
+    )
+
+
+@pytest.fixture
+def ssh_config_jump():
+    return SSHConfig(
+        host="targethost",
+        username="testuser",
+        jump_host="bastion.edu",
+    )
+
+
+class TestSSHClientConnect:
+    """Test suite for SSHClient.connect."""
+
+    def test_connect_basic(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            client.connect()
+
+            mock_instance.set_missing_host_key_policy.assert_called_once()
+            mock_instance.connect.assert_called_once()
+            kwargs = mock_instance.connect.call_args[1]
+            assert kwargs["hostname"] == "testhost"
+            assert kwargs["port"] == 22
+            assert kwargs["timeout"] == 10
+
+    def test_connect_with_full_config(self, ssh_config_full):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config_full)
+            client.connect()
+
+            kwargs = mock_instance.connect.call_args[1]
+            assert kwargs["hostname"] == "testhost"
+            assert kwargs["port"] == 2222
+            assert kwargs["username"] == "testuser"
+            assert kwargs["key_filename"] == "~/.ssh/id_test"
+
+    def test_connect_reuses_existing(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_transport = MagicMock()
+            mock_instance.get_transport.return_value = mock_transport
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            client.connect()
+            client.connect()  # second call should reuse
+
+            # connect() called only once since transport is alive
+            assert mock_instance.connect.call_count == 1
+
+    def test_connect_timeout_raises(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = socket.timeout("timed out")
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHTimeoutError, match="timed out"):
+                client.connect()
+
+    def test_connect_auth_failure_raises(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.AuthenticationException(
+                "auth failed"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHConnectionError, match="authentication.*failed"):
+                client.connect()
+
+    def test_connect_ssh_error_raises(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.SSHException(
+                "connection refused"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHConnectionError, match="connection refused"):
+                client.connect()
+
+    def test_connect_via_jump_host(self, ssh_config_jump):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_jump = MagicMock()
+            mock_target = MagicMock()
+            mock_transport = MagicMock()
+            mock_channel = MagicMock()
+            mock_jump.get_transport.return_value = mock_transport
+            mock_transport.open_channel.return_value = mock_channel
+
+            mock_cls.side_effect = [mock_target, mock_jump]
+
+            client = SSHClient(ssh_config_jump)
+            client.connect()
+
+            # Jump client connected to bastion
+            mock_jump.connect.assert_called_once()
+            jump_kwargs = mock_jump.connect.call_args[1]
+            assert jump_kwargs["hostname"] == "bastion.edu"
+
+            # Target connected through channel
+            mock_target.connect.assert_called_once()
+            target_kwargs = mock_target.connect.call_args[1]
+            assert target_kwargs["hostname"] == "targethost"
+            assert target_kwargs["sock"] == mock_channel
+
+
+class TestSSHClientExecute:
+    """Test suite for SSHClient.execute."""
+
+    def test_execute_success(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            mock_stdout = MagicMock()
+            mock_stdout.read.return_value = b"output\n"
+            mock_stdout.channel.recv_exit_status.return_value = 0
+            mock_stderr = MagicMock()
+            mock_stderr.read.return_value = b""
+            mock_instance.exec_command.return_value = (
+                MagicMock(),
+                mock_stdout,
+                mock_stderr,
             )
 
-            result = execute_ssh_command("testhost")
+            client = SSHClient(ssh_config)
+            result = client.execute("echo hello")
 
-            assert result == "success"
-            mock_run.assert_called_once()
-            args = mock_run.call_args[0][0]
-            assert args == ["ssh", "testhost", 'echo "success"']
-
-    def test_custom_command(self):
-        """Test executing custom command via SSH."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="custom output\n", stderr="", returncode=0
+            assert result == "output"
+            mock_instance.exec_command.assert_called_once_with(
+                "echo hello", timeout=10
             )
 
-            result = execute_ssh_command("testhost", "ls -la")
+    def test_execute_strips_whitespace(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
 
-            assert result == "custom output"
-            args = mock_run.call_args[0][0]
-            assert args == ["ssh", "testhost", "ls -la"]
-
-    def test_timeout_raises_error(self):
-        """Test that timeout raises SSHTimeoutError."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["ssh", "testhost"], timeout=10
+            mock_stdout = MagicMock()
+            mock_stdout.read.return_value = b"  output  \n\n"
+            mock_stdout.channel.recv_exit_status.return_value = 0
+            mock_stderr = MagicMock()
+            mock_instance.exec_command.return_value = (
+                MagicMock(),
+                mock_stdout,
+                mock_stderr,
             )
 
-            with pytest.raises(SSHTimeoutError) as exc_info:
-                execute_ssh_command("testhost", timeout=10)
+            client = SSHClient(ssh_config)
+            result = client.execute("test")
 
-            assert "timed out after 10 seconds" in str(exc_info.value)
+            assert result == "output"
 
-    def test_connection_error_raises_error(self):
-        """Test that connection errors raise SSHConnectionError."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.CalledProcessError(
-                returncode=255,
-                cmd=["ssh", "testhost"],
-                stderr="Connection refused",
+    def test_execute_nonzero_exit_raises(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            mock_stdout = MagicMock()
+            mock_stdout.read.return_value = b""
+            mock_stdout.channel.recv_exit_status.return_value = 1
+            mock_stderr = MagicMock()
+            mock_stderr.read.return_value = b"command not found"
+            mock_instance.exec_command.return_value = (
+                MagicMock(),
+                mock_stdout,
+                mock_stderr,
             )
 
-            with pytest.raises(SSHConnectionError) as exc_info:
-                execute_ssh_command("testhost")
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHConnectionError, match="command not found"):
+                client.execute("bad_command")
 
-            assert "SSH connection to testhost failed" in str(exc_info.value)
+    def test_execute_timeout_raises(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            mock_instance.exec_command.side_effect = socket.timeout("timed out")
 
-    def test_ssh_not_installed(self):
-        """Test handling when SSH client is not installed."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError("ssh command not found")
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHTimeoutError, match="timed out"):
+                client.execute("slow_command", timeout=5)
 
-            with pytest.raises(SSHConnectionError) as exc_info:
-                execute_ssh_command("testhost")
+    def test_execute_custom_timeout(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
 
-            assert "SSH client not found" in str(exc_info.value)
-
-    def test_custom_timeout(self):
-        """Test custom timeout value is passed to subprocess."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="success\n", stderr="", returncode=0
+            mock_stdout = MagicMock()
+            mock_stdout.read.return_value = b"ok"
+            mock_stdout.channel.recv_exit_status.return_value = 0
+            mock_stderr = MagicMock()
+            mock_instance.exec_command.return_value = (
+                MagicMock(),
+                mock_stdout,
+                mock_stderr,
             )
 
-            execute_ssh_command("testhost", timeout=30)
+            client = SSHClient(ssh_config)
+            client.execute("test", timeout=30)
 
-            assert mock_run.call_args[1]["timeout"] == 30
-
-    def test_strips_whitespace(self):
-        """Test that output whitespace is stripped."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="  success  \n\n", stderr="", returncode=0
+            mock_instance.exec_command.assert_called_once_with(
+                "test", timeout=30
             )
 
-            result = execute_ssh_command("testhost")
 
-            assert result == "success"
+class TestSSHClientCheckConnection:
+    """Test suite for SSHClient.check_connection."""
 
+    def test_check_connection_success(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
 
-class TestCheckConnection:
-    """Test suite for check_connection function."""
-
-    def test_successful_connection_returns_true(self):
-        """Test that successful connection returns True."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="success\n", stderr="", returncode=0
+            mock_stdout = MagicMock()
+            mock_stdout.read.return_value = b"success"
+            mock_stdout.channel.recv_exit_status.return_value = 0
+            mock_stderr = MagicMock()
+            mock_instance.exec_command.return_value = (
+                MagicMock(),
+                mock_stdout,
+                mock_stderr,
             )
 
-            result = check_connection("testhost")
+            client = SSHClient(ssh_config)
+            assert client.check_connection() is True
 
-            assert result is True
+    def test_check_connection_failure(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.SSHException("fail")
+            mock_cls.return_value = mock_instance
 
-    def test_failed_connection_returns_false(self):
-        """Test that failed connection returns False."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.CalledProcessError(
-                returncode=255,
-                cmd=["ssh", "testhost"],
-                stderr="Connection refused",
-            )
+            client = SSHClient(ssh_config)
+            assert client.check_connection() is False
 
-            result = check_connection("testhost")
 
-            assert result is False
+class TestSSHClientClose:
+    """Test suite for SSHClient.close and context manager."""
 
-    def test_timeout_returns_false(self):
-        """Test that timeout returns False."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["ssh", "testhost"], timeout=10
-            )
+    def test_close(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
 
-            result = check_connection("testhost")
+            client = SSHClient(ssh_config)
+            client.connect()
+            client.close()
 
-            assert result is False
+            mock_instance.close.assert_called_once()
 
-    def test_uses_custom_timeout(self):
-        """Test that custom timeout is passed through."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="success\n", stderr="", returncode=0
-            )
+    def test_context_manager(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
 
-            check_connection("testhost", timeout=20)
+            with SSHClient(ssh_config) as client:
+                pass
 
-            assert mock_run.call_args[1]["timeout"] == 20
+            # close is called on exit (but no paramiko client was created
+            # since we didn't call connect)
+
+    def test_host_property(self, ssh_config):
+        client = SSHClient(ssh_config)
+        assert client.host == "testhost"

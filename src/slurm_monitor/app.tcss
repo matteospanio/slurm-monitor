@@ -1,0 +1,42 @@
+ConnectionStatus {
+    dock: top;
+    height: 1;
+    background: $surface;
+    padding: 0 1;
+}
+
+JobTable {
+    height: 1fr;
+}
+
+JobDetail {
+    dock: bottom;
+    height: 3;
+    background: $surface;
+    padding: 0 1;
+}
+
+StatusBar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+FilterBar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    padding: 0 1;
+}
+
+FilterBar Input {
+    height: 1;
+    border: none;
+    padding: 0;
+}
+
+TabbedContent {
+    height: 1fr;
+}

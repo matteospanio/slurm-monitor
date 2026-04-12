@@ -1,6 +1,6 @@
 [project]
 name = "slurm-monitor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -8,12 +8,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "click>=8.1",
+    "paramiko>=3.5",
     "rich>=14.3.1",
     "textual>=7.4.0",
 ]
 
 [project.scripts]
-slurm-monitor = "slurm_monitor:main"
+slurm-monitor = "slurm_monitor.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

@@ -1,0 +1,46 @@
+# Slurm Monitor Configuration
+#
+# This file defines global defaults and per-cluster profiles.
+# Each profile inherits from [defaults] and can override any setting.
+
+[defaults]
+ssh_timeout = 10
+refresh_interval = 5
+sacct_refresh_interval = 60  # sacct (historical data) refreshes less often
+
+[defaults.ssh]
+# username = "your-username"     # SSH username (empty = current user)
+# port = 22                      # SSH port
+# key_filename = "~/.ssh/id_rsa" # Path to SSH private key
+# passphrase = ""                # Key passphrase (or use SSH agent)
+# jump_host = ""                 # SSH jump/bastion host
+
+[defaults.log]
+default_pattern = "{work_dir}/logs/{job_id}.out"
+view_command = "tail -f {log_path}"  # Command to view logs (supports {log_path} token)
+
+[defaults.slurm]
+squeue_format = "%i|%j|%T|%M|%Z"
+sacct_format = "JobID,JobName,State,Elapsed,WorkDir"
+
+
+# ── Profiles ────────────────────────────────────────────────────────
+# Each profile represents a cluster. The profile name appears as a tab
+# in the UI. The 'host' field is required for each profile.
+
+[profiles.my_cluster]
+host = "your-cluster.edu"
+# ssh.username = "matteo"
+# ssh.key_filename = "~/.ssh/id_cluster"
+
+# Per-project log patterns (matched by project name in work_dir):
+# log.specific_projects.ml_project = "{work_dir}/ml/logs/{job_id}.log"
+# log.specific_projects.simulation = "{work_dir}/sim/output/job_{job_id}.txt"
+
+# Example: second cluster with jump host
+# [profiles.hpc]
+# host = "hpc.university.edu"
+# ssh.jump_host = "bastion.university.edu"
+# ssh.username = "matteo"
+# log.default_pattern = "{work_dir}/slurm-{job_id}.out"
+# refresh_interval = 10

@@ -2,135 +2,57 @@
 
 import shlex
 import subprocess
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal
-from textual.reactive import reactive
-from textual.widgets import DataTable, Footer, Header, Label, Static
-from textual.worker import Worker, get_current_worker
+from textual.containers import Container
+from textual.widgets import Footer, Header, TabbedContent, TabPane
+from textual.worker import Worker
 
-from slurm_monitor.config import Config, ConfigLoader
-from slurm_monitor.job_aggregator import JobAggregator
+from slurm_monitor.config import AppConfig, ConfigLoader, ProfileConfig
+from slurm_monitor.job_aggregator import (
+    JobAggregator,
+    filter_jobs_by_state,
+    sort_jobs_by_time,
+)
 from slurm_monitor.log_path_resolver import LogPathResolver
 from slurm_monitor.squeue_parser import SlurmJob
+from slurm_monitor.ssh_wrapper import SSHClient
+from slurm_monitor.widgets.connection_status import ConnectionStatus
+from slurm_monitor.widgets.filter_bar import FilterBar
+from slurm_monitor.widgets.job_detail import JobDetail
+from slurm_monitor.widgets.job_table import JobTable
+from slurm_monitor.widgets.status_bar import StatusBar
 
 
-class ConnectionStatus(Static):
-    """Widget displaying connection status and information."""
+class ProfileTab:
+    """Manages state for a single profile/cluster tab."""
 
-    host: reactive[str] = reactive("localhost")
-    last_updated: reactive[Optional[str]] = reactive(None)
-    is_loading: reactive[bool] = reactive(False)
-    error_message: reactive[Optional[str]] = reactive(None)
+    def __init__(self, profile: ProfileConfig):
+        self.profile = profile
+        self.ssh_client = SSHClient(profile.ssh)
+        self.aggregator = JobAggregator(self.ssh_client, timeout=profile.ssh_timeout)
+        self.path_resolver = LogPathResolver(profile.log)
+        self.jobs: list[SlurmJob] = []
+        self.refresh_in_progress = False
+        self._sacct_cache: list[SlurmJob] = []
+        self._sacct_last_fetch: float = 0.0
 
-    def render(self) -> Text:
-        """Render the connection status."""
-        text = Text()
-
-        # Connection info
-        text.append("📡 ", style="bold")
-        text.append("Host: ", style="dim")
-        text.append(self.host, style="bold cyan")
-        text.append(" | ")
-
-        # Last updated
-        if self.is_loading:
-            text.append("⟳ ", style="bold yellow")
-            text.append("Updating...", style="yellow")
-        elif self.error_message:
-            text.append("❌ ", style="bold red")
-            text.append(f"Error: {self.error_message}", style="red")
-        elif self.last_updated:
-            text.append("✓ ", style="bold green")
-            text.append("Updated: ", style="dim")
-            text.append(self.last_updated, style="green")
-        else:
-            text.append("⏸ ", style="dim")
-            text.append("Not connected", style="dim")
-
-        return text
+    def close(self) -> None:
+        """Clean up SSH connection."""
+        self.ssh_client.close()
 
 
-class JobTable(DataTable):
-    """DataTable widget for displaying Slurm jobs."""
-
-    COLUMN_KEYS = ["job_id", "name", "state", "time", "work_dir"]
-
-    STATE_COLORS = {
-        "RUNNING": "green",
-        "PENDING": "yellow",
-        "COMPLETED": "blue",
-        "FAILED": "red",
-        "CANCELLED": "magenta",
-        "TIMEOUT": "red",
-        "OUT_OF_MEMORY": "red",
-    }
-
-    def on_mount(self) -> None:
-        """Initialize the table when mounted."""
-        self.cursor_type = "row"
-        self.zebra_stripes = True
-
-        # Add columns
-        self.add_column("Job ID", key="job_id")
-        self.add_column("Name", key="name")
-        self.add_column("State", key="state")
-        self.add_column("Time", key="time")
-        self.add_column("Work Dir", key="work_dir")
-
-    def update_jobs(self, jobs: list[SlurmJob]) -> None:
-        """
-        Update table with new job data.
-
-        Args:
-            jobs: List of SlurmJob objects to display
-        """
-        # Clear existing rows
-        self.clear()
-
-        # Add rows for each job
-        for job in jobs:
-            # Style the state with color
-            state_style = self.STATE_COLORS.get(job.state, "white")
-            styled_state = Text(job.state, style=f"bold {state_style}")
-
-            # Add row
-            self.add_row(
-                job.job_id,
-                job.name,
-                styled_state,
-                job.time,
-                job.work_dir or "",
-                key=job.job_id,
-            )
+CSS_PATH = Path(__file__).parent / "app.tcss"
 
 
 class SlurmMonitorApp(App):
     """Slurm job monitoring TUI application."""
 
-    CSS = """
-    ConnectionStatus {
-        dock: top;
-        height: 1;
-        background: $surface;
-        padding: 0 1;
-    }
-
-    JobTable {
-        height: 1fr;
-    }
-
-    #status-bar {
-        dock: bottom;
-        height: 1;
-        background: $surface;
-        color: $text-muted;
-        padding: 0 1;
-    }
-    """
+    CSS_PATH = "app.tcss"
 
     BINDINGS = [
         ("q", "quit", "Quit"),
@@ -139,168 +61,329 @@ class SlurmMonitorApp(App):
         ("j", "cursor_down", "Down"),
         ("k", "cursor_up", "Up"),
         ("g", "scroll_home", "Top"),
-        ("G", "scroll_end", "Bottom"),
+        ("shift+g", "scroll_end", "Bottom"),
         ("enter", "view_logs", "View Logs"),
+        ("slash", "toggle_filter", "Filter"),
+        ("1", "filter_running", "Running"),
+        ("2", "filter_pending", "Pending"),
+        ("3", "filter_completed", "Completed"),
+        ("4", "filter_failed", "Failed"),
+        ("0", "filter_all", "All"),
+        ("s", "cycle_sort", "Sort"),
     ]
 
-    def __init__(self, config: Optional[Config] = None):
-        """
-        Initialize the application.
-
-        Args:
-            config: Optional Config object. If None, loads from default location.
-        """
+    def __init__(self, config: Optional[AppConfig] = None):
         super().__init__()
         self.config = config or ConfigLoader.load()
-        self.aggregator = JobAggregator(
-            self.config.remote_host,
-            timeout=self.config.ssh_timeout,
-        )
-        self.path_resolver = LogPathResolver(self.config)
-        self.jobs: list[SlurmJob] = []
-        self._refresh_in_progress = False
+        self._profile_tabs: dict[str, ProfileTab] = {}
+        self._state_filter = "ALL"
+        self._name_filter = ""
+        self._sort_mode = "id"  # id, time, state, name
+
+        for name, profile in self.config.profiles.items():
+            self._profile_tabs[name] = ProfileTab(profile)
 
     def compose(self) -> ComposeResult:
-        """Create child widgets for the app."""
         yield Header()
-        yield ConnectionStatus(id="connection-status")
-        yield JobTable(id="job-table")
+
+        if len(self._profile_tabs) == 1:
+            # Single profile: no tabs needed
+            name, tab = next(iter(self._profile_tabs.items()))
+            yield ConnectionStatus(id=f"status-{name}")
+            yield JobTable(id=f"table-{name}")
+            yield JobDetail(id=f"detail-{name}")
+        else:
+            with TabbedContent():
+                for name, tab in self._profile_tabs.items():
+                    with TabPane(name, id=f"tab-{name}"):
+                        yield ConnectionStatus(id=f"status-{name}")
+                        yield JobTable(id=f"table-{name}")
+                        yield JobDetail(id=f"detail-{name}")
+
+        yield FilterBar(id="filter-bar")
+        yield StatusBar(id="status-bar")
         yield Footer()
 
     def on_mount(self) -> None:
-        """Set up the application after mounting."""
-        # Set initial connection status
-        status = self.query_one(ConnectionStatus)
-        status.host = self.config.remote_host
-
-        # Set the app title
         self.title = "Slurm Job Monitor"
-        self.sub_title = f"{self.config.remote_host}"
 
-        # Start periodic refresh
-        self.set_interval(
-            self.config.refresh_interval,
-            self.refresh_data,
-        )
+        for name, tab in self._profile_tabs.items():
+            status = self.query_one(f"#status-{name}", ConnectionStatus)
+            status.host = tab.profile.ssh.host
 
-        # Initial data load
-        self.refresh_data()
+        # Start periodic refresh for each profile
+        for name, tab in self._profile_tabs.items():
+            self.set_interval(
+                tab.profile.refresh_interval,
+                lambda n=name: self._refresh_profile(n),
+            )
 
-    def refresh_data(self) -> None:
-        """Trigger an async job data refresh (non-blocking)."""
-        if self._refresh_in_progress:
+        # Initial refresh for all profiles
+        for name in self._profile_tabs:
+            self._refresh_profile(name)
+
+    def _get_active_profile_name(self) -> str:
+        """Get the name of the currently active profile tab."""
+        if len(self._profile_tabs) == 1:
+            return next(iter(self._profile_tabs.keys()))
+
+        tabbed = self.query_one(TabbedContent)
+        active_id = tabbed.active
+        if active_id and active_id.startswith("tab-"):
+            return active_id[4:]
+        return next(iter(self._profile_tabs.keys()))
+
+    def _get_active_tab(self) -> ProfileTab:
+        """Get the ProfileTab for the currently active tab."""
+        return self._profile_tabs[self._get_active_profile_name()]
+
+    def _refresh_profile(self, profile_name: str) -> None:
+        """Trigger a job data refresh for a specific profile."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None or tab.refresh_in_progress:
             return
 
-        self._refresh_in_progress = True
-        status = self.query_one(ConnectionStatus)
-        status.is_loading = True
-        status.error_message = None
+        tab.refresh_in_progress = True
+        try:
+            status = self.query_one(f"#status-{profile_name}", ConnectionStatus)
+            status.is_loading = True
+            status.error_message = None
+        except Exception:
+            pass
 
-        self._fetch_worker = self.run_worker(
-            self._fetch_jobs_in_thread, thread=True
+        self.run_worker(
+            lambda t=tab, n=profile_name: self._fetch_jobs(t, n),
+            name=f"fetch-{profile_name}",
+            thread=True,
         )
 
-    def _fetch_jobs_in_thread(self) -> list[SlurmJob]:
-        """Fetch jobs in a background thread so the UI stays responsive."""
-        return self.aggregator.fetch_all_jobs()
+    def _fetch_jobs(self, tab: ProfileTab, profile_name: str) -> tuple[str, list[SlurmJob]]:
+        """Fetch jobs in a background thread."""
+        from slurm_monitor.squeue_parser import fetch_squeue_jobs
+        from slurm_monitor.sacct_parser import fetch_sacct_jobs
+
+        # Always fetch squeue (active jobs)
+        active_jobs = fetch_squeue_jobs(
+            tab.ssh_client, timeout=tab.profile.ssh_timeout
+        )
+
+        # Only re-fetch sacct if cache is stale
+        now = time.time()
+        if now - tab._sacct_last_fetch > tab.profile.sacct_refresh_interval:
+            historical_jobs = fetch_sacct_jobs(
+                tab.ssh_client, timeout=tab.profile.ssh_timeout
+            )
+            tab._sacct_cache = historical_jobs
+            tab._sacct_last_fetch = now
+        else:
+            historical_jobs = tab._sacct_cache
+
+        from slurm_monitor.job_aggregator import merge_jobs
+
+        merged = merge_jobs(active_jobs, historical_jobs)
+        return (profile_name, merged)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        """Handle worker completion to update the UI on the main thread."""
-        if event.worker.name != "_fetch_jobs_in_thread":
+        worker_name = event.worker.name or ""
+        if not worker_name.startswith("fetch-"):
             return
 
-        status = self.query_one(ConnectionStatus)
+        profile_name = worker_name[6:]  # strip "fetch-"
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        try:
+            status = self.query_one(f"#status-{profile_name}", ConnectionStatus)
+        except Exception:
+            return
 
         if event.state == "success":
-            jobs = event.worker.result
-            self.jobs = jobs
+            _, jobs = event.worker.result
+            tab.jobs = jobs
             status.is_loading = False
             status.last_updated = datetime.now().strftime("%H:%M:%S")
-            self.query_one(JobTable).update_jobs(jobs)
-            self._refresh_in_progress = False
+
+            # Only update UI if this is the active tab
+            if profile_name == self._get_active_profile_name():
+                self._update_display(profile_name)
+
+            tab.refresh_in_progress = False
+
         elif event.state == "error":
             error = event.worker.error
             status.is_loading = False
             status.error_message = str(error)
-            self.notify(
-                f"Error fetching jobs: {error}", severity="error", timeout=5
-            )
-            self._refresh_in_progress = False
+            self.notify(f"Error: {error}", severity="error", timeout=5)
+            tab.refresh_in_progress = False
+
         elif event.state == "cancelled":
             status.is_loading = False
-            self._refresh_in_progress = False
+            tab.refresh_in_progress = False
+
+    def _get_filtered_jobs(self, jobs: list[SlurmJob]) -> list[SlurmJob]:
+        """Apply current filters and sorting to a job list."""
+        filtered = jobs
+
+        if self._state_filter != "ALL":
+            filtered = filter_jobs_by_state(filtered, [self._state_filter])
+
+        if self._name_filter:
+            query = self._name_filter.lower()
+            filtered = [
+                j for j in filtered
+                if query in j.name.lower() or query in j.job_id
+            ]
+
+        if self._sort_mode == "time":
+            filtered = sort_jobs_by_time(filtered)
+        elif self._sort_mode == "name":
+            filtered = sorted(filtered, key=lambda j: j.name.lower())
+        elif self._sort_mode == "state":
+            filtered = sorted(filtered, key=lambda j: j.state)
+        # "id" is the default (already sorted by merge_jobs)
+
+        return filtered
+
+    def _update_display(self, profile_name: str) -> None:
+        """Update the UI for a specific profile."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        filtered = self._get_filtered_jobs(tab.jobs)
+
+        try:
+            table = self.query_one(f"#table-{profile_name}", JobTable)
+            table.update_jobs(filtered)
+        except Exception:
+            pass
+
+        try:
+            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar.update_stats(
+                tab.jobs,
+                filter_text=self._name_filter,
+                state_filter=self._state_filter,
+            )
+        except Exception:
+            pass
+
+    def on_data_table_cursor_moved(self, event) -> None:
+        """Update job detail panel when cursor moves."""
+        active_name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(active_name)
+        if tab is None:
+            return
+
+        filtered = self._get_filtered_jobs(tab.jobs)
+
+        try:
+            table = self.query_one(f"#table-{active_name}", JobTable)
+            detail = self.query_one(f"#detail-{active_name}", JobDetail)
+        except Exception:
+            return
+
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(filtered):
+            job = filtered[table.cursor_row]
+            log_path = tab.path_resolver.resolve_path(
+                job_id=job.job_id, work_dir=job.work_dir
+            )
+            detail.set_job(job, log_path)
+        else:
+            detail.set_job(None)
+
+    def on_tabbed_content_tab_activated(self, event) -> None:
+        """Refresh display when switching tabs."""
+        active_name = self._get_active_profile_name()
+        self._update_display(active_name)
+
+    # ── Actions ──────────────────────────────────────────────────────
 
     def action_refresh(self) -> None:
-        """Manually refresh the job data."""
-        self.notify("Refreshing job data...", timeout=2)
-        self.refresh_data()
+        """Manually refresh the active profile."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab:
+            tab._sacct_last_fetch = 0.0  # force sacct re-fetch
+        self.notify("Refreshing...", timeout=2)
+        self._refresh_profile(name)
 
     def action_help(self) -> None:
-        """Show help information."""
-        help_text = """
-        Slurm Job Monitor - Help
-
-        Keybindings:
-        - q: Quit application
-        - r: Manually refresh data
-        - j/k: Navigate down/up (Vim-style)
-        - g/G: Jump to top/bottom
-        - Enter: View job logs (tail -f)
-        - ↑/↓: Navigate jobs (arrow keys)
-        - ?: Show this help
-
-        The display updates automatically every {} seconds.
-        """.format(self.config.refresh_interval)
-
-        self.notify(help_text.strip(), timeout=10)
+        active = self._get_active_tab()
+        help_text = (
+            "Slurm Job Monitor - Help\n\n"
+            "q: Quit  r: Refresh  ?: Help\n"
+            "j/k: Navigate  g/G: Top/Bottom\n"
+            "Enter: View logs  /: Search\n"
+            "1: Running  2: Pending  3: Completed  4: Failed  0: All\n"
+            "s: Cycle sort (id/time/name/state)\n"
+            f"\nRefresh: {active.profile.refresh_interval}s  "
+            f"Sacct cache: {active.profile.sacct_refresh_interval}s"
+        )
+        self.notify(help_text, timeout=10)
 
     def action_cursor_down(self) -> None:
-        """Move cursor down (Vim j key)."""
-        table = self.query_one(JobTable)
-        table.action_cursor_down()
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_cursor_down()
+        except Exception:
+            pass
 
     def action_cursor_up(self) -> None:
-        """Move cursor up (Vim k key)."""
-        table = self.query_one(JobTable)
-        table.action_cursor_up()
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_cursor_up()
+        except Exception:
+            pass
 
     def action_scroll_home(self) -> None:
-        """Scroll to top (Vim g key)."""
-        table = self.query_one(JobTable)
-        table.action_scroll_home()
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_scroll_home()
+        except Exception:
+            pass
 
     def action_scroll_end(self) -> None:
-        """Scroll to bottom (Vim G key)."""
-        table = self.query_one(JobTable)
-        table.action_scroll_end()
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_scroll_end()
+        except Exception:
+            pass
 
     def action_view_logs(self) -> None:
-        """View logs for the selected job using tail -f."""
-        table = self.query_one(JobTable)
+        """View logs for the selected job."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
 
-        # Get the selected job
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab.jobs)
+
         if table.cursor_row is None or table.cursor_row < 0:
             self.notify("No job selected", severity="warning", timeout=3)
             return
 
-        if not self.jobs:
+        if not filtered:
             self.notify("No jobs available", severity="warning", timeout=3)
             return
 
-        # Find the selected job
         try:
-            selected_job = self.jobs[table.cursor_row]
+            selected_job = filtered[table.cursor_row]
         except IndexError:
             self.notify("Invalid job selection", severity="error", timeout=3)
             return
 
-        # Resolve log path
-        log_path = self.path_resolver.resolve_path(
+        log_path = tab.path_resolver.resolve_path(
             job_id=selected_job.job_id,
             work_dir=selected_job.work_dir,
         )
 
-        # Check if path contains unresolved tokens
         if "{" in log_path:
             self.notify(
                 f"Cannot resolve log path: {log_path}",
@@ -309,63 +392,110 @@ class SlurmMonitorApp(App):
             )
             return
 
-        # Suspend the app and run tail
-        self._tail_log_file(selected_job, log_path)
+        view_cmd = tab.path_resolver.resolve_view_command(
+            job_id=selected_job.job_id,
+            work_dir=selected_job.work_dir,
+        )
 
-    def _tail_log_file(self, job: SlurmJob, log_path: str) -> None:
-        """
-        Suspend app and tail the log file via SSH.
+        self._run_log_viewer(selected_job, log_path, view_cmd, tab)
 
-        Args:
-            job: The SlurmJob to view logs for
-            log_path: Resolved path to the log file
-        """
+    def _run_log_viewer(
+        self, job: SlurmJob, log_path: str, view_cmd: str, tab: ProfileTab
+    ) -> None:
+        """Suspend app and run the log viewer command via SSH."""
         with self.suspend():
-            # Build SSH tail command
             ssh_cmd = [
                 "ssh",
                 "-t",
-                self.config.remote_host,
-                f"tail -f {shlex.quote(log_path)}",
+                tab.profile.ssh.host,
+                view_cmd,
             ]
 
+            # Add SSH options
+            if tab.profile.ssh.port != 22:
+                ssh_cmd.insert(2, "-p")
+                ssh_cmd.insert(3, str(tab.profile.ssh.port))
+            if tab.profile.ssh.username:
+                ssh_cmd.insert(2, "-l")
+                ssh_cmd.insert(3, tab.profile.ssh.username)
+            if tab.profile.ssh.jump_host:
+                ssh_cmd.insert(2, "-J")
+                ssh_cmd.insert(3, tab.profile.ssh.jump_host)
+
             try:
-                # Show info before launching
-                print(f"\n📄 Viewing logs for job {job.job_id}: {job.name}")
-                print(f"📁 Log file: {log_path}")
-                print(f"🔗 Host: {self.config.remote_host}")
-                print("\n🛈  Press Ctrl+C to return to the monitor\n")
+                print(f"\nViewing logs for job {job.job_id}: {job.name}")
+                print(f"Log file: {log_path}")
+                print(f"Host: {tab.profile.ssh.host}")
+                print(f"Command: {view_cmd}")
+                print(f"\nPress Ctrl+C to return to the monitor\n")
                 print("-" * 60)
 
-                # Run SSH tail command
                 subprocess.run(ssh_cmd)
 
             except FileNotFoundError:
-                print("\n❌ Error: SSH command not found")
-                print("   Please ensure SSH is installed and in your PATH")
+                print("\nError: SSH command not found")
             except KeyboardInterrupt:
-                print("\n\n✓ Returning to monitor...")
+                print("\n\nReturning to monitor...")
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                print(f"\nError: {e}")
 
-            # Wait for user to see any error messages
             input("\nPress Enter to continue...")
 
-        # Refresh data after returning
         self.notify("Returned from log viewer. Refreshing...", timeout=2)
-        self.refresh_data()
+        self._refresh_profile(self._get_active_profile_name())
 
+    # ── Filter actions ───────────────────────────────────────────────
 
-def main(config: Optional[Config] = None) -> None:
-    """
-    Run the Slurm Monitor application.
+    def action_toggle_filter(self) -> None:
+        """Toggle the search/filter bar."""
+        filter_bar = self.query_one("#filter-bar", FilterBar)
+        if filter_bar.display:
+            filter_bar.hide()
+        else:
+            filter_bar.show()
 
-    Args:
-        config: Optional Config object. If None, loads from default location.
-    """
-    app = SlurmMonitorApp(config)
-    app.run()
+    def on_filter_bar_filter_changed(self, event: FilterBar.FilterChanged) -> None:
+        self._name_filter = event.value
+        name = self._get_active_profile_name()
+        self._update_display(name)
 
+    def on_filter_bar_filter_closed(self, event: FilterBar.FilterClosed) -> None:
+        # Return focus to the table
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).focus()
+        except Exception:
+            pass
 
-if __name__ == "__main__":
-    main()
+    def _set_state_filter(self, state: str) -> None:
+        self._state_filter = state
+        name = self._get_active_profile_name()
+        self._update_display(name)
+
+    def action_filter_running(self) -> None:
+        self._set_state_filter("RUNNING" if self._state_filter != "RUNNING" else "ALL")
+
+    def action_filter_pending(self) -> None:
+        self._set_state_filter("PENDING" if self._state_filter != "PENDING" else "ALL")
+
+    def action_filter_completed(self) -> None:
+        self._set_state_filter("COMPLETED" if self._state_filter != "COMPLETED" else "ALL")
+
+    def action_filter_failed(self) -> None:
+        self._set_state_filter("FAILED" if self._state_filter != "FAILED" else "ALL")
+
+    def action_filter_all(self) -> None:
+        self._set_state_filter("ALL")
+
+    def action_cycle_sort(self) -> None:
+        modes = ["id", "time", "name", "state"]
+        current = modes.index(self._sort_mode) if self._sort_mode in modes else 0
+        self._sort_mode = modes[(current + 1) % len(modes)]
+        self.notify(f"Sort: {self._sort_mode}", timeout=2)
+        name = self._get_active_profile_name()
+        self._update_display(name)
+
+    def on_unmount(self) -> None:
+        """Clean up SSH connections on exit."""
+        for tab in self._profile_tabs.values():
+            tab.close()

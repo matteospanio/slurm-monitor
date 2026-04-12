@@ -1,105 +1,223 @@
-"""SSH wrapper for executing remote commands on Slurm clusters."""
+"""SSH wrapper using paramiko for executing remote commands on Slurm clusters."""
 
-import subprocess
+import socket
 from typing import Optional
+
+import paramiko
+
+from slurm_monitor.config import SSHConfig
 
 
 class SSHConnectionError(Exception):
     """Raised when SSH connection fails."""
 
-    pass
-
 
 class SSHTimeoutError(Exception):
     """Raised when SSH command times out."""
 
-    pass
 
+class SSHClient:
+    """Persistent SSH client wrapping paramiko.
 
-def execute_ssh_command(
-    host: str,
-    command: str = 'echo "success"',
-    timeout: int = 10,
-) -> str:
+    Maintains an open connection for reuse across multiple commands.
+    Supports key auth, password auth, jump hosts, and custom ports.
     """
-    Execute a command on a remote host via SSH.
 
-    Args:
-        host: The remote host to connect to
-        command: The command to execute on the remote host
-        timeout: Timeout in seconds for the SSH connection
+    def __init__(self, config: SSHConfig):
+        """Initialize the SSH client.
 
-    Returns:
-        The stdout from the remote command
+        Args:
+            config: SSH connection configuration
+        """
+        self.config = config
+        self._client: Optional[paramiko.SSHClient] = None
+        self._jump_client: Optional[paramiko.SSHClient] = None
+        self._jump_channel = None
 
-    Raises:
-        SSHConnectionError: If the SSH connection fails
-        SSHTimeoutError: If the command times out
-    """
-    ssh_command = ["ssh", host, command]
+    @property
+    def host(self) -> str:
+        """Return the configured host."""
+        return self.config.host
 
-    try:
-        result = subprocess.run(
-            ssh_command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=True,
+    def connect(self, timeout: int = 10) -> None:
+        """Establish SSH connection.
+
+        Args:
+            timeout: Connection timeout in seconds
+
+        Raises:
+            SSHConnectionError: If connection fails
+            SSHTimeoutError: If connection times out
+        """
+        if self._client is not None:
+            try:
+                self._client.get_transport().send_ignore()
+                return  # already connected and alive
+            except Exception:
+                self.close()
+
+        try:
+            self._client = paramiko.SSHClient()
+            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            connect_kwargs = self._build_connect_kwargs(timeout)
+
+            if self.config.jump_host:
+                self._connect_via_jump(connect_kwargs, timeout)
+            else:
+                self._client.connect(**connect_kwargs)
+
+        except socket.timeout as e:
+            self.close()
+            raise SSHTimeoutError(
+                f"SSH connection to {self.config.host} timed out "
+                f"after {timeout} seconds"
+            ) from e
+        except paramiko.AuthenticationException as e:
+            self.close()
+            raise SSHConnectionError(
+                f"SSH authentication to {self.config.host} failed: {e}"
+            ) from e
+        except (paramiko.SSHException, OSError) as e:
+            self.close()
+            raise SSHConnectionError(
+                f"SSH connection to {self.config.host} failed: {e}"
+            ) from e
+
+    def _build_connect_kwargs(self, timeout: int) -> dict:
+        """Build keyword arguments for paramiko connect()."""
+        kwargs: dict = {
+            "hostname": self.config.host,
+            "port": self.config.port,
+            "timeout": timeout,
+            "allow_agent": True,
+            "look_for_keys": True,
+        }
+        if self.config.username:
+            kwargs["username"] = self.config.username
+        if self.config.key_filename:
+            kwargs["key_filename"] = self.config.key_filename
+        if self.config.passphrase:
+            kwargs["passphrase"] = self.config.passphrase
+        return kwargs
+
+    def _connect_via_jump(self, connect_kwargs: dict, timeout: int) -> None:
+        """Connect through a jump/bastion host."""
+        self._jump_client = paramiko.SSHClient()
+        self._jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        jump_kwargs: dict = {
+            "hostname": self.config.jump_host,
+            "port": 22,
+            "timeout": timeout,
+            "allow_agent": True,
+            "look_for_keys": True,
+        }
+        if self.config.username:
+            jump_kwargs["username"] = self.config.username
+
+        self._jump_client.connect(**jump_kwargs)
+
+        jump_transport = self._jump_client.get_transport()
+        self._jump_channel = jump_transport.open_channel(
+            "direct-tcpip",
+            (self.config.host, self.config.port),
+            ("127.0.0.1", 0),
         )
-        return result.stdout.strip()
 
-    except subprocess.TimeoutExpired as e:
-        raise SSHTimeoutError(
-            f"SSH command to {host} timed out after {timeout} seconds"
-        ) from e
+        connect_kwargs["sock"] = self._jump_channel
+        self._client.connect(**connect_kwargs)
 
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        raise SSHConnectionError(
-            f"SSH connection to {host} failed: {error_msg}"
-        ) from e
+    def execute(self, command: str, timeout: int = 10) -> str:
+        """Execute a command on the remote host.
 
-    except FileNotFoundError as e:
-        raise SSHConnectionError(
-            "SSH client not found. Please ensure SSH is installed."
-        ) from e
+        Args:
+            command: The command to execute
+            timeout: Command execution timeout in seconds
 
+        Returns:
+            stdout from the remote command
 
-def check_connection(host: str, timeout: int = 10) -> bool:
-    """
-    Check if SSH connection to host is working.
+        Raises:
+            SSHConnectionError: If not connected or connection lost
+            SSHTimeoutError: If command times out
+        """
+        self.connect(timeout)
 
-    Args:
-        host: The remote host to check connection to
-        timeout: Timeout in seconds for the connection test
+        try:
+            _, stdout, stderr = self._client.exec_command(
+                command, timeout=timeout
+            )
+            exit_status = stdout.channel.recv_exit_status()
+            output = stdout.read().decode("utf-8").strip()
 
-    Returns:
-        True if connection successful, False otherwise
-    """
-    try:
-        result = execute_ssh_command(host, 'echo "success"', timeout)
-        return result == "success"
-    except (SSHConnectionError, SSHTimeoutError):
-        return False
+            if exit_status != 0:
+                error_output = stderr.read().decode("utf-8").strip()
+                raise SSHConnectionError(
+                    f"Command failed on {self.config.host} "
+                    f"(exit {exit_status}): {error_output or command}"
+                )
 
+            return output
 
-if __name__ == "__main__":
-    import sys
+        except socket.timeout as e:
+            raise SSHTimeoutError(
+                f"SSH command to {self.config.host} timed out "
+                f"after {timeout} seconds"
+            ) from e
+        except SSHConnectionError:
+            raise
+        except SSHTimeoutError:
+            raise
+        except (paramiko.SSHException, OSError) as e:
+            self.close()
+            raise SSHConnectionError(
+                f"SSH command to {self.config.host} failed: {e}"
+            ) from e
 
-    if len(sys.argv) < 2:
-        print("Usage: python -m slurm_monitor.ssh_wrapper <host> [command]")
-        sys.exit(1)
+    def check_connection(self, timeout: int = 10) -> bool:
+        """Check if SSH connection to host is working.
 
-    host = sys.argv[1]
-    command = sys.argv[2] if len(sys.argv) > 2 else 'echo "success"'
+        Args:
+            timeout: Timeout in seconds for the connection test
 
-    try:
-        output = execute_ssh_command(host, command)
-        print(output)
-        sys.exit(0)
-    except SSHTimeoutError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(2)
-    except SSHConnectionError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(3)
+        Returns:
+            True if connection successful, False otherwise
+        """
+        try:
+            result = self.execute('echo "success"', timeout)
+            return result == "success"
+        except (SSHConnectionError, SSHTimeoutError):
+            return False
+
+    def close(self) -> None:
+        """Close the SSH connection and clean up resources."""
+        if self._jump_channel is not None:
+            try:
+                self._jump_channel.close()
+            except Exception:
+                pass
+            self._jump_channel = None
+
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:
+                pass
+            self._client = None
+
+        if self._jump_client is not None:
+            try:
+                self._jump_client.close()
+            except Exception:
+                pass
+            self._jump_client = None
+
+    def __del__(self) -> None:
+        self.close()
+
+    def __enter__(self) -> "SSHClient":
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.close()

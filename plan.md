@@ -139,3 +139,55 @@ Goal: Fix bugs and performance issues found during usage.
 
   - Removed unused `import re` from `sacct_parser.py`.
   - Verification: All 139 tests pass.
+
+## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
+
+Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.
+
+- [x] Task 8.1: Profile-Based TOML Configuration
+
+  - Replaced flat JSON config with profile-based TOML format.
+  - New dataclasses: SSHConfig, LogConfig, SlurmConfig, ProfileConfig, AppConfig.
+  - JSON backward compatibility preserved via _from_legacy_json().
+  - Verification: 37 config tests pass covering TOML, JSON, profile merging.
+
+- [x] Task 8.2: Click CLI
+
+  - Added cli.py with --config, --profile, --host, --list-profiles options.
+  - Updated pyproject.toml entry point.
+  - Verification: `slurm-monitor --help` and `--list-profiles` work correctly.
+
+- [x] Task 8.3: Paramiko SSH Client
+
+  - Replaced subprocess SSH with paramiko SSHClient class.
+  - Supports connection reuse, key auth, jump hosts, custom ports.
+  - Verification: 15 SSH wrapper tests pass covering connect, execute, close.
+
+- [x] Task 8.4: Updated Parsers and Aggregator
+
+  - fetch_squeue_jobs/fetch_sacct_jobs now accept SSHClient.
+  - JobAggregator takes SSHClient instead of host string.
+  - LogPathResolver takes LogConfig instead of Config.
+  - Verification: All 160 tests pass.
+
+- [x] Task 8.5: Tabbed Multi-Profile UI
+
+  - TabbedContent with one tab per profile (single profile = no tabs).
+  - Each tab has its own ConnectionStatus, JobTable, JobDetail.
+  - Sacct caching with configurable sacct_refresh_interval.
+  - Configurable log viewer via log.view_command.
+  - Verification: App launches with tabbed layout.
+
+- [x] Task 8.6: Filtering, Search, and Sort
+
+  - State filter toggle keys (1-4, 0 for all).
+  - Name search via / key with FilterBar widget.
+  - Sort cycling via s key (id/time/name/state).
+  - StatusBar showing job counts and active filters.
+  - Verification: Filtering and sort work interactively.
+
+- [x] Task 8.7: Widget Extraction
+
+  - Extracted widgets to widgets/ package: ConnectionStatus, JobTable, JobDetail, StatusBar, FilterBar.
+  - Moved CSS to external app.tcss file.
+  - Verification: All 160 tests pass.

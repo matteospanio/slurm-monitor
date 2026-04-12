@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > The *Unreleased* section is for changes that are not yet released, but are going to be released in the next version.
 
+## [0.2.0] - 2026-04-12
+
+### Added
+
+- **Profile-based TOML configuration**: Support for multiple cluster profiles, each with its own SSH, log, and Slurm settings. JSON backward compatibility preserved.
+- **Paramiko SSH client**: Replaced subprocess-based SSH with paramiko for programmatic connection management, connection reuse, key auth, and jump host support.
+- **CLI with Click**: Added `--config`, `--profile`, `--host`, and `--list-profiles` command-line options.
+- **Tabbed multi-profile UI**: Each cluster profile appears as its own tab when multiple profiles are configured.
+- **Job detail panel**: Shows selected job's full info and resolved log path below the table.
+- **Sacct caching**: Historical job data is cached and only re-fetched at a configurable `sacct_refresh_interval` (default 60s), reducing SSH load.
+- **Configurable log viewer**: Log view command is now configurable per-profile via `log.view_command` (default: `tail -f {log_path}`).
+- **Interactive filtering**: Filter jobs by state (`1`=Running, `2`=Pending, `3`=Completed, `4`=Failed, `0`=All) or by name search (`/` key).
+- **Column sorting**: Press `s` to cycle sort by id, time, name, or state.
+- **Status bar**: Shows job counts by state, active filters, and search query.
+- **Extracted widget modules**: ConnectionStatus, JobTable, JobDetail, StatusBar, FilterBar in `widgets/` package.
+- **External CSS**: Moved styles from inline Python to `app.tcss`.
+- New config dataclasses: `SSHConfig`, `LogConfig`, `SlurmConfig`, `ProfileConfig`, `AppConfig`.
+- `LogPathResolver.resolve_view_command()` for building configurable viewer commands.
+- `config.example.toml` with documented TOML configuration format.
+
+### Changed
+
+- SSH wrapper now uses `paramiko.SSHClient` instead of `subprocess.run(["ssh", ...])`.
+- Config format changed from flat JSON to profile-based TOML (JSON still supported for backward compatibility).
+- `ConfigLoader.load()` now returns `AppConfig` (with profiles) instead of flat `Config`.
+- `fetch_squeue_jobs()` and `fetch_sacct_jobs()` now accept `SSHClient` instead of bare host string.
+- `JobAggregator` now takes `SSHClient` instead of host string.
+- `LogPathResolver` now takes `LogConfig` instead of `Config`.
+- Default refresh interval changed from 2s to 5s.
+- Test count increased from 139 to 160.
+
+### Removed
+
+- Old flat `Config` and `LogPathConfig` dataclasses (replaced by profile-based system).
+- `execute_ssh_command()` and `check_connection()` standalone functions (replaced by `SSHClient` class).
+
 ## [Unreleased] - 2026-03-31
 
 ### Fixed
