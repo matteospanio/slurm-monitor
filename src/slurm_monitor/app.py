@@ -63,6 +63,7 @@ class SlurmMonitorApp(App):
         ("g", "scroll_home", "Top"),
         ("shift+g", "scroll_end", "Bottom"),
         ("enter", "view_logs", "View Logs"),  # fallback when table not focused
+        ("e", "view_stderr", "Stderr"),
         ("slash", "toggle_filter", "Filter"),
         ("1", "filter_running", "Running"),
         ("2", "filter_pending", "Pending"),
@@ -376,7 +377,7 @@ class SlurmMonitorApp(App):
             "Slurm Job Monitor - Help\n\n"
             "q: Quit  r: Refresh  ?: Help\n"
             "j/k: Navigate  g/G: Top/Bottom\n"
-            "Enter: View logs  /: Search\n"
+            "Enter: View stdout  e: View stderr  /: Search\n"
             "1: Running  2: Pending  3: Completed  4: Failed  0: All\n"
             "s: Cycle sort (id/time/name/state)\n"
             f"\nRefresh: {active.profile.refresh_interval}s  "
@@ -413,7 +414,19 @@ class SlurmMonitorApp(App):
             pass
 
     def action_view_logs(self) -> None:
-        """View logs for the selected job."""
+        """View stdout logs for the selected job."""
+        self._open_log_viewer("stdout")
+
+    def action_view_stderr(self) -> None:
+        """View stderr logs for the selected job."""
+        self._open_log_viewer("stderr")
+
+    def _open_log_viewer(self, stream: str = "stdout") -> None:
+        """Open the log viewer for the selected job.
+
+        Args:
+            stream: Which log stream to view ('stdout' or 'stderr')
+        """
         name = self._get_active_profile_name()
         tab = self._profile_tabs.get(name)
         if tab is None:
@@ -440,8 +453,7 @@ class SlurmMonitorApp(App):
             self.notify("Invalid job selection", severity="error", timeout=3)
             return
 
-        # Use StdOut path from scontrol; fetch on demand if not cached
-        log_path = ""
+        # Fetch scontrol details on demand if not cached
         details = tab.current_details
         if not details or not details.stdout_path:
             details = fetch_job_details(
@@ -449,9 +461,20 @@ class SlurmMonitorApp(App):
             )
             if details:
                 tab.current_details = details
-        if details and details.stdout_path:
-            log_path = details.stdout_path
-        else:
+
+        # Pick the right path based on stream
+        log_path = ""
+        if details:
+            if stream == "stderr":
+                log_path = details.stderr_path
+            else:
+                log_path = details.stdout_path
+
+        if not log_path:
+            if stream == "stderr":
+                self.notify("No stderr path available", severity="warning", timeout=3)
+                return
+            # Fallback to resolver for stdout only
             log_path = tab.path_resolver.resolve_path(
                 job_id=selected_job.job_id,
                 work_dir=selected_job.work_dir,
