@@ -7,7 +7,7 @@ import pytest
 from slurm_monitor.config import SSHConfig
 from slurm_monitor.job_aggregator import (
     JobAggregator,
-    _time_to_seconds,
+    time_to_seconds,
     filter_jobs_by_state,
     get_job_by_id,
     merge_jobs,
@@ -150,25 +150,25 @@ class TestSortJobsByTime:
 
 
 class TestTimeToSeconds:
-    """Test suite for _time_to_seconds helper function."""
+    """Test suite for time_to_seconds helper function."""
 
     def test_hhmmss(self):
-        assert _time_to_seconds("01:23:45") == 1 * 3600 + 23 * 60 + 45
+        assert time_to_seconds("01:23:45") == 1 * 3600 + 23 * 60 + 45
 
     def test_mmss(self):
-        assert _time_to_seconds("05:30") == 5 * 60 + 30
+        assert time_to_seconds("05:30") == 5 * 60 + 30
 
     def test_day_prefix(self):
-        assert _time_to_seconds("2-10:00:00") == 2 * 86400 + 10 * 3600
+        assert time_to_seconds("2-10:00:00") == 2 * 86400 + 10 * 3600
 
     def test_zero(self):
-        assert _time_to_seconds("00:00:00") == 0
+        assert time_to_seconds("00:00:00") == 0
 
     def test_invalid_returns_zero(self):
-        assert _time_to_seconds("invalid") == 0
+        assert time_to_seconds("invalid") == 0
 
     def test_empty_returns_zero(self):
-        assert _time_to_seconds("") == 0
+        assert time_to_seconds("") == 0
 
 
 class TestFilterJobsByState:

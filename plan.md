@@ -174,6 +174,31 @@ Goal: Fix bugs and performance issues found during usage.
   - Removed `subprocess` and `shlex` dependencies from app.py.
   - Verification: 5 new unit tests pass; Enter opens logs inside the TUI.
 
+## 🔍 Epic 9: Extended Job Details via scontrol
+
+Goal: Show rich job resource usage (time, memory, CPUs) and use real log paths from Slurm.
+
+- [x] Task 9.1: scontrol Parser and JobDetails Dataclass
+
+  - New `scontrol_parser.py` with `JobDetails` dataclass, `parse_scontrol_output()`, memory parsing, and `fetch_job_details()`.
+  - Fetches `scontrol show job` for metadata and `sstat` for actual memory usage of running jobs.
+  - Computes time percentage (RunTime/TimeLimit) and memory percentage (MaxRSS/ReqTRES).
+  - Made `_time_to_seconds` public as `time_to_seconds` for reuse.
+  - Verification: 31 new unit tests pass.
+
+- [x] Task 9.2: Enhanced Job Detail Panel
+
+  - Expanded `JobDetail` widget to render time/memory progress bars, CPUs, partition, nodes, submit/start times, StdOut/StdErr paths.
+  - Detail panel auto-sizes up to 10 lines.
+  - Details fetched via background worker on cursor move.
+  - Verification: Detail panel shows resource usage with colored bars.
+
+- [x] Task 9.3: Log Viewer Uses scontrol StdOut Path
+
+  - `action_view_logs` now uses the real `StdOut` path from scontrol instead of config-based pattern resolver.
+  - Falls back to `LogPathResolver` when scontrol data is unavailable.
+  - Verification: Enter opens the actual Slurm log file.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.

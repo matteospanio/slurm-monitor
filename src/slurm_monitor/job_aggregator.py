@@ -68,7 +68,7 @@ def merge_jobs(
     return merged_list
 
 
-def _time_to_seconds(time_str: str) -> int:
+def time_to_seconds(time_str: str) -> int:
     """Convert a Slurm time string to total seconds for comparison.
 
     Supports formats: MM:SS, HH:MM:SS, D-HH:MM:SS
@@ -109,7 +109,7 @@ def sort_jobs_by_time(jobs: list[SlurmJob], reverse: bool = True) -> list[SlurmJ
     Returns:
         Sorted list of jobs
     """
-    return sorted(jobs, key=lambda job: _time_to_seconds(job.time), reverse=reverse)
+    return sorted(jobs, key=lambda job: time_to_seconds(job.time), reverse=reverse)
 
 
 def filter_jobs_by_state(

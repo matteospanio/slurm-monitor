@@ -16,6 +16,7 @@ from slurm_monitor.job_aggregator import (
     sort_jobs_by_time,
 )
 from slurm_monitor.log_path_resolver import LogPathResolver
+from slurm_monitor.scontrol_parser import JobDetails, fetch_job_details
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import SSHClient, SSHConnectionError, SSHTimeoutError
 from slurm_monitor.widgets.connection_status import ConnectionStatus
@@ -38,6 +39,7 @@ class ProfileTab:
         self.refresh_in_progress = False
         self._sacct_cache: list[SlurmJob] = []
         self._sacct_last_fetch: float = 0.0
+        self.current_details: Optional[JobDetails] = None
 
     def close(self) -> None:
         """Clean up SSH connection."""
@@ -194,6 +196,11 @@ class SlurmMonitorApp(App):
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
+
+        if worker_name.startswith("detail-"):
+            self._on_detail_worker_done(event)
+            return
+
         if not worker_name.startswith("fetch-"):
             return
 
@@ -309,8 +316,46 @@ class SlurmMonitorApp(App):
                 job_id=job.job_id, work_dir=job.work_dir
             )
             detail.set_job(job, log_path)
+
+            # Fetch extended details in background
+            self.run_worker(
+                lambda t=tab, j=job, n=active_name: self._fetch_detail(t, j, n),
+                name=f"detail-{active_name}",
+                thread=True,
+                exclusive=True,
+            )
         else:
+            tab.current_details = None
             detail.set_job(None)
+
+    def _fetch_detail(
+        self, tab: ProfileTab, job: SlurmJob, profile_name: str
+    ) -> tuple[str, str, Optional[JobDetails]]:
+        """Fetch scontrol details for a job in a background thread."""
+        details = fetch_job_details(
+            tab.ssh_client, job.job_id, timeout=tab.profile.ssh_timeout
+        )
+        return (profile_name, job.job_id, details)
+
+    def _on_detail_worker_done(self, event: Worker.StateChanged) -> None:
+        """Handle detail fetch completion."""
+        if event.state != WorkerState.SUCCESS:
+            return
+        profile_name, job_id, details = event.worker.result
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        tab.current_details = details
+
+        try:
+            detail_widget = self.query_one(f"#detail-{profile_name}", JobDetail)
+        except Exception:
+            return
+
+        # Only update if still viewing the same job
+        if detail_widget._job and detail_widget._job.job_id == job_id:
+            detail_widget.set_details(details)
 
     def on_tabbed_content_tab_activated(self, event) -> None:
         """Refresh display when switching tabs."""
@@ -398,23 +443,22 @@ class SlurmMonitorApp(App):
             self.notify("Invalid job selection", severity="error", timeout=3)
             return
 
-        log_path = tab.path_resolver.resolve_path(
-            job_id=selected_job.job_id,
-            work_dir=selected_job.work_dir,
-        )
+        # Prefer StdOut path from scontrol if available
+        if tab.current_details and tab.current_details.stdout_path:
+            log_path = tab.current_details.stdout_path
+        else:
+            log_path = tab.path_resolver.resolve_path(
+                job_id=selected_job.job_id,
+                work_dir=selected_job.work_dir,
+            )
 
-        if "{" in log_path:
+        if not log_path or "{" in log_path:
             self.notify(
                 f"Cannot resolve log path: {log_path}",
                 severity="error",
                 timeout=5,
             )
             return
-
-        view_cmd = tab.path_resolver.resolve_view_command(
-            job_id=selected_job.job_id,
-            work_dir=selected_job.work_dir,
-        )
 
         self.push_screen(LogScreen(selected_job, log_path, tab.ssh_client))
 
