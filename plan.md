@@ -199,6 +199,15 @@ Goal: Show rich job resource usage (time, memory, CPUs) and use real log paths f
   - Falls back to `LogPathResolver` when scontrol data is unavailable.
   - Verification: Enter opens the actual Slurm log file.
 
+- [x] Task 9.4: Redesigned Navigation Flow
+
+  - New flow: job table → Enter → JobDetailScreen (scontrol stats) → `o` stdout / `e` stderr → LogScreen → Escape back.
+  - New `JobDetailScreen` shows full scontrol stats: time/memory bars, CPUs, partition, nodes, schedule, command, log paths.
+  - `LogScreen` now has vim keybindings (j/k/g/G) for scrolling and `f` to toggle follow mode.
+  - Simplified `JobDetail` bottom panel to basic summary (detail screen has full stats).
+  - Removed detail-fetching-on-cursor-move from app.py (detail screen manages its own fetch).
+  - Verification: 208 tests pass; 3-screen navigation works correctly.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.

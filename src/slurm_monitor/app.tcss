@@ -11,8 +11,7 @@ JobTable {
 
 JobDetail {
     dock: bottom;
-    height: auto;
-    max-height: 10;
+    height: 3;
     background: $surface;
     padding: 0 1;
 }

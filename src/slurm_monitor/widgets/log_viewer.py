@@ -23,6 +23,11 @@ class LogScreen(Screen):
     BINDINGS = [
         Binding("escape", "close", "Back", priority=True),
         Binding("q", "close", "Back"),
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+        Binding("g", "scroll_home", "Top", show=False),
+        Binding("shift+g", "scroll_end", "Bottom", show=False),
+        Binding("f", "toggle_follow", "Follow"),
     ]
 
     CSS = """
@@ -52,12 +57,16 @@ class LogScreen(Screen):
         self.ssh_client = ssh_client
         self.tail_lines = tail_lines
         self._channel = None
+        self._follow = True
 
     def compose(self) -> ComposeResult:
         yield LogHeader(
             f" Job {self.job.job_id}: {self.job.name} | {self.log_path} "
         )
-        yield RichLog(id="log-output", wrap=True, highlight=True, markup=False)
+        yield RichLog(
+            id="log-output", wrap=True, highlight=True, markup=False,
+            auto_scroll=True,
+        )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -98,8 +107,28 @@ class LogScreen(Screen):
         except Exception as e:
             self.app.call_from_thread(log_widget.write, f"\n[ERROR] {e}")
 
+    def action_scroll_down(self) -> None:
+        self.query_one("#log-output", RichLog).scroll_down()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#log-output", RichLog).scroll_up()
+
+    def action_scroll_home(self) -> None:
+        self.query_one("#log-output", RichLog).scroll_home()
+
+    def action_scroll_end(self) -> None:
+        self.query_one("#log-output", RichLog).scroll_end()
+
+    def action_toggle_follow(self) -> None:
+        """Toggle auto-scroll follow mode."""
+        log_widget = self.query_one("#log-output", RichLog)
+        self._follow = not self._follow
+        log_widget.auto_scroll = self._follow
+        mode = "ON" if self._follow else "OFF"
+        self.notify(f"Follow: {mode}", timeout=2)
+
     def action_close(self) -> None:
-        """Close the log viewer and return to the main screen."""
+        """Close the log viewer and return to the previous screen."""
         if self._channel is not None:
             try:
                 self._channel.close()
