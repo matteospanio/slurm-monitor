@@ -1,14 +1,11 @@
 """Main TUI application for Slurm Monitor."""
 
-import shlex
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from textual.app import App, ComposeResult
-from textual.containers import Container
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState
 
@@ -25,6 +22,7 @@ from slurm_monitor.widgets.connection_status import ConnectionStatus
 from slurm_monitor.widgets.filter_bar import FilterBar
 from slurm_monitor.widgets.job_detail import JobDetail
 from slurm_monitor.widgets.job_table import JobTable
+from slurm_monitor.widgets.log_viewer import LogScreen
 from slurm_monitor.widgets.status_bar import StatusBar
 
 
@@ -418,52 +416,7 @@ class SlurmMonitorApp(App):
             work_dir=selected_job.work_dir,
         )
 
-        self._run_log_viewer(selected_job, log_path, view_cmd, tab)
-
-    def _run_log_viewer(
-        self, job: SlurmJob, log_path: str, view_cmd: str, tab: ProfileTab
-    ) -> None:
-        """Suspend app and run the log viewer command via SSH."""
-        with self.suspend():
-            ssh_cmd = [
-                "ssh",
-                "-t",
-                tab.profile.ssh.host,
-                view_cmd,
-            ]
-
-            # Add SSH options
-            if tab.profile.ssh.port != 22:
-                ssh_cmd.insert(2, "-p")
-                ssh_cmd.insert(3, str(tab.profile.ssh.port))
-            if tab.profile.ssh.username:
-                ssh_cmd.insert(2, "-l")
-                ssh_cmd.insert(3, tab.profile.ssh.username)
-            if tab.profile.ssh.jump_host:
-                ssh_cmd.insert(2, "-J")
-                ssh_cmd.insert(3, tab.profile.ssh.jump_host)
-
-            try:
-                print(f"\nViewing logs for job {job.job_id}: {job.name}")
-                print(f"Log file: {log_path}")
-                print(f"Host: {tab.profile.ssh.host}")
-                print(f"Command: {view_cmd}")
-                print(f"\nPress Ctrl+C to return to the monitor\n")
-                print("-" * 60)
-
-                subprocess.run(ssh_cmd)
-
-            except FileNotFoundError:
-                print("\nError: SSH command not found")
-            except KeyboardInterrupt:
-                print("\n\nReturning to monitor...")
-            except Exception as e:
-                print(f"\nError: {e}")
-
-            input("\nPress Enter to continue...")
-
-        self.notify("Returned from log viewer. Refreshing...", timeout=2)
-        self._refresh_profile(self._get_active_profile_name())
+        self.push_screen(LogScreen(selected_job, log_path, tab.ssh_client))
 
     # ── Filter actions ───────────────────────────────────────────────
 

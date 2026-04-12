@@ -166,6 +166,14 @@ Goal: Fix bugs and performance issues found during usage.
   - Added `on_data_table_row_selected` handler to catch DataTable's RowSelected event and delegate to `action_view_logs`.
   - Verification: Pressing Enter on a job row now opens the log viewer.
 
+- [x] Task 5.3: In-App Log Viewer Screen
+
+  - Replaced the suspend-to-shell `tail -f` approach with an in-TUI `LogScreen`.
+  - New `LogScreen` uses Textual's `RichLog` widget and streams log lines via paramiko channel.
+  - Bindings: `Escape`/`q` to return to the main screen.
+  - Removed `subprocess` and `shlex` dependencies from app.py.
+  - Verification: 5 new unit tests pass; Enter opens logs inside the TUI.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.
