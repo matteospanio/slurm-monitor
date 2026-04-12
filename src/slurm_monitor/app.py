@@ -62,7 +62,7 @@ class SlurmMonitorApp(App):
         ("k", "cursor_up", "Up"),
         ("g", "scroll_home", "Top"),
         ("shift+g", "scroll_end", "Bottom"),
-        ("enter", "view_logs", "View Logs"),
+        ("enter", "view_logs", "View Logs"),  # fallback when table not focused
         ("slash", "toggle_filter", "Filter"),
         ("1", "filter_running", "Running"),
         ("2", "filter_pending", "Pending"),
@@ -285,6 +285,10 @@ class SlurmMonitorApp(App):
             )
         except Exception:
             pass
+
+    def on_data_table_row_selected(self, event) -> None:
+        """Handle Enter key on a table row — view logs for that job."""
+        self.action_view_logs()
 
     def on_data_table_cursor_moved(self, event) -> None:
         """Update job detail panel when cursor moves."""

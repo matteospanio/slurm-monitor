@@ -160,6 +160,12 @@ Goal: Fix bugs and performance issues found during usage.
   - This was the reason jobs were fetched but never displayed in the UI.
   - Verification: All 172 tests pass; jobs now appear in the table.
 
+- [x] Task 7.7: Fix Enter Key Not Opening Log Viewer
+
+  - DataTable's built-in `enter` binding (`select_cursor`) was intercepting the key before the app-level `action_view_logs` binding.
+  - Added `on_data_table_row_selected` handler to catch DataTable's RowSelected event and delegate to `action_view_logs`.
+  - Verification: Pressing Enter on a job row now opens the log viewer.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.
