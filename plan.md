@@ -153,6 +153,13 @@ Goal: Fix bugs and performance issues found during usage.
   - Explicit `SSHConfig` fields still override SSH config values.
   - Verification: 8 new unit tests pass covering alias resolution, overrides, proxy commands, and missing config.
 
+- [x] Task 7.6: Fix Worker State Comparison Using Enum
+
+  - `on_worker_state_changed` compared `event.state` against string literals (`"success"`, `"error"`, `"cancelled"`) but Textual uses `WorkerState` enum values.
+  - Replaced string comparisons with `WorkerState.SUCCESS`, `WorkerState.ERROR`, `WorkerState.CANCELLED`.
+  - This was the reason jobs were fetched but never displayed in the UI.
+  - Verification: All 172 tests pass; jobs now appear in the table.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.

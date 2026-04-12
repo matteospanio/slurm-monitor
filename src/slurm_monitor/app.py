@@ -10,7 +10,7 @@ from typing import Optional
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.widgets import Footer, Header, TabbedContent, TabPane
-from textual.worker import Worker
+from textual.worker import Worker, WorkerState
 
 from slurm_monitor.config import AppConfig, ConfigLoader, ProfileConfig
 from slurm_monitor.job_aggregator import (
@@ -209,7 +209,7 @@ class SlurmMonitorApp(App):
         except Exception:
             return
 
-        if event.state == "success":
+        if event.state == WorkerState.SUCCESS:
             _, jobs, error_msg = event.worker.result
             status.is_loading = False
 
@@ -227,14 +227,14 @@ class SlurmMonitorApp(App):
 
             tab.refresh_in_progress = False
 
-        elif event.state == "error":
+        elif event.state == WorkerState.ERROR:
             error = event.worker.error
             status.is_loading = False
             status.error_message = str(error)
             self.notify(f"Error: {error}", severity="error", timeout=5)
             tab.refresh_in_progress = False
 
-        elif event.state == "cancelled":
+        elif event.state == WorkerState.CANCELLED:
             status.is_loading = False
             tab.refresh_in_progress = False
 
