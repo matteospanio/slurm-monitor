@@ -312,10 +312,7 @@ class SlurmMonitorApp(App):
 
         if table.cursor_row is not None and 0 <= table.cursor_row < len(filtered):
             job = filtered[table.cursor_row]
-            log_path = tab.path_resolver.resolve_path(
-                job_id=job.job_id, work_dir=job.work_dir
-            )
-            detail.set_job(job, log_path)
+            detail.set_job(job)
 
             # Fetch extended details in background
             self.run_worker(
@@ -443,9 +440,17 @@ class SlurmMonitorApp(App):
             self.notify("Invalid job selection", severity="error", timeout=3)
             return
 
-        # Prefer StdOut path from scontrol if available
-        if tab.current_details and tab.current_details.stdout_path:
-            log_path = tab.current_details.stdout_path
+        # Use StdOut path from scontrol; fetch on demand if not cached
+        log_path = ""
+        details = tab.current_details
+        if not details or not details.stdout_path:
+            details = fetch_job_details(
+                tab.ssh_client, selected_job.job_id, timeout=tab.profile.ssh_timeout
+            )
+            if details:
+                tab.current_details = details
+        if details and details.stdout_path:
+            log_path = details.stdout_path
         else:
             log_path = tab.path_resolver.resolve_path(
                 job_id=selected_job.job_id,
