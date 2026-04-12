@@ -1,9 +1,24 @@
 """Job table widget for Slurm Monitor."""
 
+from pathlib import PurePosixPath
+
 from rich.text import Text
 from textual.widgets import DataTable
 
 from slurm_monitor.squeue_parser import SlurmJob
+
+
+def _truncate_path(path: str, components: int = 2) -> str:
+    """Truncate a path to the last N components.
+
+    Example: '/home/user/projects/ml/train' -> '../ml/train'
+    """
+    if not path:
+        return ""
+    parts = PurePosixPath(path).parts
+    if len(parts) <= components:
+        return path
+    return "../" + "/".join(parts[-components:])
 
 
 class JobTable(DataTable):
@@ -28,6 +43,7 @@ class JobTable(DataTable):
         self.add_column("Name", key="name")
         self.add_column("State", key="state")
         self.add_column("Time", key="time")
+        self.add_column("GPUs", key="gpus")
         self.add_column("Work Dir", key="work_dir")
 
     def update_jobs(self, jobs: list[SlurmJob]) -> None:
@@ -37,12 +53,15 @@ class JobTable(DataTable):
         for job in jobs:
             state_style = self.STATE_COLORS.get(job.state, "white")
             styled_state = Text(job.state, style=f"bold {state_style}")
+            gpu_text = job.gpu_display
+            styled_gpu = Text(gpu_text, style="cyan") if gpu_text else Text("")
 
             self.add_row(
                 job.job_id,
                 job.name,
                 styled_state,
-                job.time,
-                job.work_dir or "",
+                Text(job.time, justify="right"),
+                styled_gpu,
+                _truncate_path(job.work_dir or ""),
                 key=job.job_id,
             )

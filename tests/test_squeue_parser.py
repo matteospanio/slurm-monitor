@@ -113,11 +113,39 @@ class TestSlurmJob:
             "state": "RUNNING",
             "time": "1:23:45",
             "work_dir": "/home/user",
+            "gres": None,
         }
 
     def test_job_to_dict_without_workdir(self):
         job = SlurmJob("12345", "my_job", "PENDING", "0:00:00")
         assert job.to_dict()["work_dir"] is None
+
+    def test_gpu_display_typed(self):
+        job = SlurmJob("1", "j", "R", "0:00", gres="gpu:l40s:4")
+        assert job.gpu_display == "4x l40s"
+
+    def test_gpu_display_generic(self):
+        job = SlurmJob("1", "j", "R", "0:00", gres="gpu:2")
+        assert job.gpu_display == "2x gpu"
+
+    def test_gpu_display_none(self):
+        job = SlurmJob("1", "j", "R", "0:00", gres=None)
+        assert job.gpu_display == ""
+
+    def test_gpu_display_null_string(self):
+        job = SlurmJob("1", "j", "R", "0:00", gres="(null)")
+        assert job.gpu_display == ""
+
+    def test_parse_line_with_gres(self):
+        line = "12345|my_job|RUNNING|1:00:00|/home/user|gpu:l40s:4"
+        job = parse_squeue_line(line)
+        assert job.gres == "gpu:l40s:4"
+        assert job.gpu_display == "4x l40s"
+
+    def test_parse_line_without_gres(self):
+        line = "12345|my_job|RUNNING|1:00:00|/home/user"
+        job = parse_squeue_line(line)
+        assert job.gres is None
 
 
 class TestJobsToDictList:
@@ -157,7 +185,7 @@ class TestFetchSqueueJobs:
         mock_ssh_client.execute.return_value = ""
         fetch_squeue_jobs(mock_ssh_client)
         cmd = mock_ssh_client.execute.call_args[0][0]
-        assert 'squeue --me -o "%i|%j|%T|%M|%Z" --noheader' == cmd
+        assert 'squeue --me -o "%i|%j|%T|%M|%Z|%b" --noheader' == cmd
 
     def test_fetch_jobs_custom_timeout(self, mock_ssh_client):
         mock_ssh_client.execute.return_value = ""

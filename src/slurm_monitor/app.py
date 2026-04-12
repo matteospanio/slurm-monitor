@@ -108,6 +108,7 @@ class SlurmMonitorApp(App):
         for name, tab in self._profile_tabs.items():
             status = self.query_one(f"#status-{name}", ConnectionStatus)
             status.host = tab.profile.ssh.host
+            status.profile_name = name
 
         # Start periodic refresh for each profile
         for name, tab in self._profile_tabs.items():
@@ -280,6 +281,7 @@ class SlurmMonitorApp(App):
                 tab.jobs,
                 filter_text=self._name_filter,
                 state_filter=self._state_filter,
+                sort_mode=self._sort_mode,
             )
         except Exception:
             pass

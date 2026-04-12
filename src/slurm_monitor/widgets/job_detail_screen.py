@@ -5,6 +5,7 @@ from typing import Optional
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
@@ -39,12 +40,15 @@ def _render_bar(percentage: float) -> Text:
     return bar
 
 
+_SEPARATOR = "\u2500" * 40
+
+
 class DetailHeader(Static):
     """Header bar for the detail screen."""
 
 
-class DetailBody(Static):
-    """Body content showing job details."""
+class DetailSection(Static):
+    """A section within the detail body."""
 
 
 class JobDetailScreen(Screen):
@@ -55,6 +59,8 @@ class JobDetailScreen(Screen):
         Binding("q", "close", "Back"),
         Binding("o", "view_stdout", "View stdout"),
         Binding("e", "view_stderr", "View stderr"),
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
     ]
 
     CSS = """
@@ -66,7 +72,11 @@ class JobDetailScreen(Screen):
         padding: 0 1;
     }
 
-    DetailBody {
+    #detail-scroll {
+        height: 1fr;
+    }
+
+    DetailSection {
         padding: 1 2;
     }
     """
@@ -85,7 +95,8 @@ class JobDetailScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield DetailHeader(f" Job {self.job.job_id}: {self.job.name}")
-        yield DetailBody(id="detail-body")
+        with ScrollableContainer(id="detail-scroll"):
+            yield DetailSection(id="detail-body")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -93,9 +104,9 @@ class JobDetailScreen(Screen):
         self.run_worker(self._fetch, thread=True, exclusive=True)
 
     def _render_loading(self) -> None:
-        body = self.query_one("#detail-body", DetailBody)
+        body = self.query_one("#detail-body", DetailSection)
         text = Text()
-        text.append("Loading job details...", style="dim italic")
+        text.append("Loading job details\u2026", style="dim italic")
         body.update(text)
 
     def _fetch(self) -> Optional[JobDetails]:
@@ -108,11 +119,11 @@ class JobDetailScreen(Screen):
             self.details = event.worker.result
             self._render_details()
         elif event.state == WorkerState.ERROR:
-            body = self.query_one("#detail-body", DetailBody)
+            body = self.query_one("#detail-body", DetailSection)
             body.update(Text("Failed to fetch job details", style="red"))
 
     def _render_details(self) -> None:
-        body = self.query_one("#detail-body", DetailBody)
+        body = self.query_one("#detail-body", DetailSection)
         text = Text()
         job = self.job
         d = self.details
@@ -135,8 +146,8 @@ class JobDetailScreen(Screen):
         text.append(job.state, style=f"bold {state_color}")
 
         if d:
-            # Time
-            text.append("\n\n")
+            # Time section
+            text.append(f"\n\n{_SEPARATOR}\n")
             text.append("Time", style="bold underline")
             text.append("\n  Elapsed:   ", style="dim")
             text.append(d.run_time)
@@ -145,9 +156,9 @@ class JobDetailScreen(Screen):
             text.append("\n  Progress:  ", style="dim")
             text.append_text(_render_bar(d.time_percentage))
 
-            # Memory
+            # Memory section
             if d.mem_requested:
-                text.append("\n\n")
+                text.append(f"\n\n{_SEPARATOR}\n")
                 text.append("Memory", style="bold underline")
                 text.append("\n  Requested: ", style="dim")
                 text.append(d.mem_requested)
@@ -157,25 +168,25 @@ class JobDetailScreen(Screen):
                     text.append("\n  Usage:     ", style="dim")
                     text.append_text(_render_bar(d.mem_percentage))
 
-            # GPUs
+            # GPUs section
             if d.num_gpus > 0:
-                text.append("\n\n")
+                text.append(f"\n\n{_SEPARATOR}\n")
                 text.append("GPUs", style="bold underline")
                 gpu_label = f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
                 text.append(f"\n  Allocated: ", style="dim")
-                text.append(gpu_label)
+                text.append(gpu_label, style="cyan")
                 if d.gpus:
                     for gpu in d.gpus:
                         text.append(f"\n  GPU {gpu.index}:    ", style="dim")
-                        text.append(f"{gpu.name}  ", style="")
+                        text.append(f"{gpu.name}  ", style="cyan")
                         text.append("Util: ", style="dim")
                         text.append_text(_render_bar(gpu.utilization))
                         text.append(f"\n             Mem:  ", style="dim")
                         text.append(f"{gpu.mem_used_mb}M / {gpu.mem_total_mb}M  ")
                         text.append_text(_render_bar(gpu.mem_percentage))
 
-            # Resources
-            text.append("\n\n")
+            # Resources section
+            text.append(f"\n\n{_SEPARATOR}\n")
             text.append("Resources", style="bold underline")
             if d.num_cpus:
                 text.append("\n  CPUs:      ", style="dim")
@@ -191,8 +202,8 @@ class JobDetailScreen(Screen):
                 text.append("\n  Nodes:     ", style="dim")
                 text.append(d.node_list)
 
-            # Timing
-            text.append("\n\n")
+            # Timing section
+            text.append(f"\n\n{_SEPARATOR}\n")
             text.append("Schedule", style="bold underline")
             if d.submit_time:
                 text.append("\n  Submitted: ", style="dim")
@@ -204,14 +215,14 @@ class JobDetailScreen(Screen):
                 text.append("\n  End:       ", style="dim")
                 text.append(d.end_time)
 
-            # Paths
+            # Paths section
             if d.command:
-                text.append("\n\n")
+                text.append(f"\n\n{_SEPARATOR}\n")
                 text.append("Command", style="bold underline")
                 text.append("\n  ", style="dim")
                 text.append(d.command)
 
-            text.append("\n\n")
+            text.append(f"\n\n{_SEPARATOR}\n")
             text.append("Log Files", style="bold underline")
             if d.stdout_path:
                 text.append("\n  StdOut:    ", style="dim")
@@ -222,7 +233,7 @@ class JobDetailScreen(Screen):
         else:
             text.append("\n\nNo scontrol data available", style="dim italic")
 
-        text.append("\n\n")
+        text.append(f"\n\n{_SEPARATOR}\n")
         text.append("Press ", style="dim")
         text.append("o", style="bold")
         text.append(" for stdout, ", style="dim")
@@ -243,16 +254,22 @@ class JobDetailScreen(Screen):
     def action_view_stdout(self) -> None:
         path = self._get_log_path("stdout")
         if path:
-            self.app.push_screen(LogScreen(self.job, path, self.ssh_client))
+            self.app.push_screen(LogScreen(self.job, path, self.ssh_client, stream="stdout"))
         else:
             self.notify("No stdout path available", severity="warning", timeout=3)
 
     def action_view_stderr(self) -> None:
         path = self._get_log_path("stderr")
         if path:
-            self.app.push_screen(LogScreen(self.job, path, self.ssh_client))
+            self.app.push_screen(LogScreen(self.job, path, self.ssh_client, stream="stderr"))
         else:
             self.notify("No stderr path available", severity="warning", timeout=3)
 
     def action_close(self) -> None:
         self.app.pop_screen()
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#detail-scroll", ScrollableContainer).scroll_down()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#detail-scroll", ScrollableContainer).scroll_up()

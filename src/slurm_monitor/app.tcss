@@ -1,7 +1,8 @@
 ConnectionStatus {
     dock: top;
     height: 1;
-    background: $surface;
+    background: $accent-darken-2;
+    color: $text;
     padding: 0 1;
 }
 
@@ -9,18 +10,31 @@ JobTable {
     height: 1fr;
 }
 
+JobTable > .datatable--cursor {
+    background: $accent;
+    color: $text;
+}
+
+JobTable > .datatable--header {
+    background: $surface;
+    color: $text-muted;
+    text-style: bold;
+}
+
 JobDetail {
     dock: bottom;
     height: 3;
     background: $surface;
+    color: $text;
     padding: 0 1;
+    border-top: solid $primary-lighten-2;
 }
 
 StatusBar {
     dock: bottom;
     height: 1;
-    background: $surface;
-    color: $text-muted;
+    background: $surface-darken-1;
+    color: $text;
     padding: 0 1;
 }
 

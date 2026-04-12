@@ -50,24 +50,41 @@ class LogScreen(Screen):
         log_path: str,
         ssh_client: SSHClient,
         tail_lines: int = 50,
+        stream: str = "stdout",
     ):
         super().__init__()
         self.job = job
         self.log_path = log_path
         self.ssh_client = ssh_client
         self.tail_lines = tail_lines
+        self.stream = stream
         self._channel = None
         self._follow = True
 
     def compose(self) -> ComposeResult:
+        stream_label = "stderr" if self.stream == "stderr" else "stdout"
+        follow_label = "FOLLOW" if self._follow else "PAUSED"
         yield LogHeader(
-            f" Job {self.job.job_id}: {self.job.name} | {self.log_path} "
+            f" Job {self.job.job_id} \u2502 {stream_label} \u2502 {follow_label} \u2502 {self.log_path}",
+            id="log-header",
         )
         yield RichLog(
             id="log-output", wrap=True, highlight=True, markup=False,
             auto_scroll=True,
         )
         yield Footer()
+
+    def _update_header(self) -> None:
+        """Refresh the header to reflect current state."""
+        stream_label = "stderr" if self.stream == "stderr" else "stdout"
+        follow_label = "FOLLOW" if self._follow else "PAUSED"
+        try:
+            header = self.query_one("#log-header", LogHeader)
+            header.update(
+                f" Job {self.job.job_id} \u2502 {stream_label} \u2502 {follow_label} \u2502 {self.log_path}"
+            )
+        except Exception:
+            pass
 
     def on_mount(self) -> None:
         self.run_worker(self._stream_log, thread=True, exclusive=True)
@@ -124,8 +141,7 @@ class LogScreen(Screen):
         log_widget = self.query_one("#log-output", RichLog)
         self._follow = not self._follow
         log_widget.auto_scroll = self._follow
-        mode = "ON" if self._follow else "OFF"
-        self.notify(f"Follow: {mode}", timeout=2)
+        self._update_header()
 
     def action_close(self) -> None:
         """Close the log viewer and return to the previous screen."""

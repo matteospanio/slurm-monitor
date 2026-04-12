@@ -15,6 +15,7 @@ class SlurmJob:
     state: str
     time: str
     work_dir: Optional[str] = None
+    gres: Optional[str] = None
 
     def to_dict(self) -> dict[str, Optional[str]]:
         """Convert job to dictionary representation."""
@@ -24,7 +25,26 @@ class SlurmJob:
             "state": self.state,
             "time": self.time,
             "work_dir": self.work_dir,
+            "gres": self.gres,
         }
+
+    @property
+    def gpu_display(self) -> str:
+        """Return a human-readable GPU string like '4x l40s' or ''."""
+        if not self.gres or self.gres == "(null)":
+            return ""
+        # gres format: gpu:type:count or gpu:count
+        for part in self.gres.split(","):
+            part = part.strip()
+            if part.startswith("gpu:"):
+                segments = part.split(":")
+                if len(segments) == 3:
+                    # gpu:type:count
+                    return f"{segments[2]}x {segments[1]}"
+                elif len(segments) == 2:
+                    # gpu:count
+                    return f"{segments[1]}x gpu"
+        return ""
 
 
 def parse_squeue_line(line: str) -> SlurmJob:
@@ -32,7 +52,7 @@ def parse_squeue_line(line: str) -> SlurmJob:
 
     Args:
         line: A pipe-delimited line from squeue output
-              Format: JobID|JobName|State|Time|WorkDir
+              Format: JobID|JobName|State|Time|WorkDir|Gres
 
     Returns:
         SlurmJob object with parsed data
@@ -49,6 +69,7 @@ def parse_squeue_line(line: str) -> SlurmJob:
         )
 
     work_dir = parts[4] if len(parts) > 4 and parts[4] else None
+    gres = parts[5] if len(parts) > 5 and parts[5] else None
 
     return SlurmJob(
         job_id=parts[0],
@@ -56,6 +77,7 @@ def parse_squeue_line(line: str) -> SlurmJob:
         state=parts[2],
         time=parts[3],
         work_dir=work_dir,
+        gres=gres,
     )
 
 
@@ -86,7 +108,7 @@ def parse_squeue_output(output: str) -> list[SlurmJob]:
 def fetch_squeue_jobs(
     client: SSHClient,
     timeout: int = 10,
-    format_string: str = "%i|%j|%T|%M|%Z",
+    format_string: str = "%i|%j|%T|%M|%Z|%b",
 ) -> list[SlurmJob]:
     """Fetch and parse jobs from squeue on a remote host.
 

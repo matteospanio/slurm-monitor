@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > The *Unreleased* section is for changes that are not yet released, but are going to be released in the next version.
 
+## [0.3.0] - 2026-04-12
+
+### Added
+
+- **GPU column in job table**: Shows allocated GPUs per job (e.g., `4x l40s`) via new `gres` field in squeue format (`%b`).
+- **Colored connection indicator**: ConnectionStatus widget now shows a colored dot (green = connected, red = error, yellow = loading) with profile name alongside host.
+- **Badge-style status bar**: State counts render as colored badges with sort mode indicator icons.
+- **Scrollable job detail screen**: Detail body uses `ScrollableContainer` so long output doesn't get cut off; j/k vim bindings for scrolling.
+- **Section separators in detail screen**: Horizontal line separators between Time, Memory, GPUs, Resources, Schedule, and Log Files sections.
+- **Log viewer stream indicator**: Header shows stream type (stdout/stderr) and follow mode (FOLLOW/PAUSED), updating dynamically on toggle.
+- **Path truncation**: Work directory paths in the job table are truncated to the last 2 components for readability.
+- 12 new unit tests for GPU display, gres parsing, and path truncation (231 total).
+
+### Changed
+
+- squeue format string now includes `%b` (gres) field by default.
+- `SlurmJob` dataclass has new optional `gres` field and `gpu_display` property.
+- `LogScreen` constructor accepts a `stream` parameter to distinguish stdout/stderr.
+- `StatusBar.update_stats()` accepts `sort_mode` parameter.
+- `ConnectionStatus` has new `profile_name` reactive field.
+- Enhanced CSS: accent background on connection bar, border on detail panel, styled table cursor/header rows, darker status bar.
+- Updated pyproject.toml description and version to 0.3.0.
+- Rewritten README with current feature set, TOML config examples, and navigation flow documentation.
+
 ## [0.2.0] - 2026-04-12
 
 ### Added
@@ -43,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Old flat `Config` and `LogPathConfig` dataclasses (replaced by profile-based system).
 - `execute_ssh_command()` and `check_connection()` standalone functions (replaced by `SSHClient` class).
 
-## [Unreleased] - 2026-03-31
+## [0.1.1] - 2026-03-31
 
 ### Fixed
 

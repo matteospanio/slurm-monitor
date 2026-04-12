@@ -267,3 +267,46 @@ Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, 
   - Extracted widgets to widgets/ package: ConnectionStatus, JobTable, JobDetail, StatusBar, FilterBar.
   - Moved CSS to external app.tcss file.
   - Verification: All 160 tests pass.
+
+## 🎨 Epic 10: UI Polish & Visual Improvements
+
+Goal: Make the TUI more visually polished and information-dense.
+
+- [x] Task 10.1: Enhanced CSS Styling
+
+  - Added accent background to ConnectionStatus, subtle border to JobDetail panel.
+  - Styled DataTable cursor/header rows.
+  - Darker background for StatusBar.
+  - Verification: Visual inspection confirms improved contrast and structure.
+
+- [x] Task 10.2: Improved ConnectionStatus
+
+  - Added colored dot indicator: green = connected, red = error, yellow = loading, hollow = not connected.
+  - Displays profile name alongside host: `● dei (login.dei.unipd.it) │ Updated: 15:42:07`.
+  - Verification: 231 tests pass.
+
+- [x] Task 10.3: Better JobTable
+
+  - Added GPU column showing allocated GPUs (e.g., `4x l40s`) via new `gres` field in squeue format.
+  - Truncated work_dir paths to last 2 components (e.g., `../tmp/mxlGPT`).
+  - Right-aligned Time column for easier scanning.
+  - Verification: 231 tests pass; 6 new tests for truncate_path, 7 new tests for gpu_display/gres parsing.
+
+- [x] Task 10.4: Richer StatusBar
+
+  - Badge-style state counts with colored backgrounds (green/yellow/blue/red).
+  - Sort mode indicator with icons (#, ⏱, A-Z, ●).
+  - Verification: 231 tests pass.
+
+- [x] Task 10.5: Scrollable JobDetailScreen
+
+  - Replaced plain Static body with ScrollableContainer for long detail views.
+  - Added horizontal line separators (─) between sections.
+  - Added j/k vim bindings for scrolling within the detail screen.
+  - Verification: 231 tests pass.
+
+- [x] Task 10.6: Improved LogScreen Header
+
+  - Header now shows stream type (stdout/stderr), follow mode indicator (FOLLOW/PAUSED), and path.
+  - Header updates dynamically when toggling follow mode.
+  - Verification: 231 tests pass.
