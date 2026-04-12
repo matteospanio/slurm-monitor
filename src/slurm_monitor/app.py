@@ -20,7 +20,7 @@ from slurm_monitor.job_aggregator import (
 )
 from slurm_monitor.log_path_resolver import LogPathResolver
 from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurm_monitor.ssh_wrapper import SSHClient, SSHConnectionError, SSHTimeoutError
 from slurm_monitor.widgets.connection_status import ConnectionStatus
 from slurm_monitor.widgets.filter_bar import FilterBar
 from slurm_monitor.widgets.job_detail import JobDetail
@@ -157,31 +157,42 @@ class SlurmMonitorApp(App):
             thread=True,
         )
 
-    def _fetch_jobs(self, tab: ProfileTab, profile_name: str) -> tuple[str, list[SlurmJob]]:
-        """Fetch jobs in a background thread."""
+    def _fetch_jobs(
+        self, tab: ProfileTab, profile_name: str
+    ) -> tuple[str, list[SlurmJob], Optional[str]]:
+        """Fetch jobs in a background thread.
+
+        Returns:
+            Tuple of (profile_name, jobs, error_message).
+            error_message is None on success.
+        """
         from slurm_monitor.squeue_parser import fetch_squeue_jobs
         from slurm_monitor.sacct_parser import fetch_sacct_jobs
 
-        # Always fetch squeue (active jobs)
-        active_jobs = fetch_squeue_jobs(
-            tab.ssh_client, timeout=tab.profile.ssh_timeout
-        )
-
-        # Only re-fetch sacct if cache is stale
-        now = time.time()
-        if now - tab._sacct_last_fetch > tab.profile.sacct_refresh_interval:
-            historical_jobs = fetch_sacct_jobs(
+        try:
+            # Always fetch squeue (active jobs)
+            active_jobs = fetch_squeue_jobs(
                 tab.ssh_client, timeout=tab.profile.ssh_timeout
             )
-            tab._sacct_cache = historical_jobs
-            tab._sacct_last_fetch = now
-        else:
-            historical_jobs = tab._sacct_cache
 
-        from slurm_monitor.job_aggregator import merge_jobs
+            # Only re-fetch sacct if cache is stale
+            now = time.time()
+            if now - tab._sacct_last_fetch > tab.profile.sacct_refresh_interval:
+                historical_jobs = fetch_sacct_jobs(
+                    tab.ssh_client, timeout=tab.profile.ssh_timeout
+                )
+                tab._sacct_cache = historical_jobs
+                tab._sacct_last_fetch = now
+            else:
+                historical_jobs = tab._sacct_cache
 
-        merged = merge_jobs(active_jobs, historical_jobs)
-        return (profile_name, merged)
+            from slurm_monitor.job_aggregator import merge_jobs
+
+            merged = merge_jobs(active_jobs, historical_jobs)
+            return (profile_name, merged, None)
+
+        except (SSHConnectionError, SSHTimeoutError) as e:
+            return (profile_name, [], str(e))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
@@ -199,14 +210,20 @@ class SlurmMonitorApp(App):
             return
 
         if event.state == "success":
-            _, jobs = event.worker.result
-            tab.jobs = jobs
+            _, jobs, error_msg = event.worker.result
             status.is_loading = False
-            status.last_updated = datetime.now().strftime("%H:%M:%S")
 
-            # Only update UI if this is the active tab
-            if profile_name == self._get_active_profile_name():
-                self._update_display(profile_name)
+            if error_msg:
+                status.error_message = error_msg
+                self.notify(f"Error: {error_msg}", severity="error", timeout=5)
+            else:
+                tab.jobs = jobs
+                status.last_updated = datetime.now().strftime("%H:%M:%S")
+                status.error_message = None
+
+                # Only update UI if this is the active tab
+                if profile_name == self._get_active_profile_name():
+                    self._update_display(profile_name)
 
             tab.refresh_in_progress = False
 

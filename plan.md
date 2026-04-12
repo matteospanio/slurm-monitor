@@ -140,6 +140,12 @@ Goal: Fix bugs and performance issues found during usage.
   - Removed unused `import re` from `sacct_parser.py`.
   - Verification: All 139 tests pass.
 
+- [x] Task 7.5: Graceful SSH Error Handling in App
+
+  - Wrapped `_fetch_jobs()` SSH calls in try/except so connection/timeout errors are returned as data instead of crashing the app.
+  - The worker now always succeeds; errors are displayed via the UI notification and connection status widget.
+  - Verification: App no longer crashes when SSH host is unreachable; 4 new unit tests pass.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.
