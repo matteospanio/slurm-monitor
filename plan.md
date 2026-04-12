@@ -146,6 +146,13 @@ Goal: Fix bugs and performance issues found during usage.
   - The worker now always succeeds; errors are displayed via the UI notification and connection status widget.
   - Verification: App no longer crashes when SSH host is unreachable; 4 new unit tests pass.
 
+- [x] Task 8.8: Parse ~/.ssh/config for Host Aliases
+
+  - Updated `_build_connect_kwargs()` to read `~/.ssh/config` via `paramiko.SSHConfig`.
+  - Resolves host aliases to real hostnames, usernames, ports, identity files, and proxy commands.
+  - Explicit `SSHConfig` fields still override SSH config values.
+  - Verification: 8 new unit tests pass covering alias resolution, overrides, proxy commands, and missing config.
+
 ## 🔄 Epic 8: Full Refactoring - Configurable Multi-Profile Architecture
 
 Goal: Make the app fully configurable with multi-cluster support, paramiko SSH, and improved UX.

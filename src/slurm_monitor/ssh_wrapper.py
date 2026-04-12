@@ -1,5 +1,6 @@
 """SSH wrapper using paramiko for executing remote commands on Slurm clusters."""
 
+import os
 import socket
 from typing import Optional
 
@@ -85,20 +86,55 @@ class SSHClient:
             ) from e
 
     def _build_connect_kwargs(self, timeout: int) -> dict:
-        """Build keyword arguments for paramiko connect()."""
+        """Build keyword arguments for paramiko connect().
+
+        Reads ~/.ssh/config to resolve host aliases, real hostnames,
+        usernames, ports, identity files, and proxy commands — then
+        lets explicit SSHConfig fields override.
+        """
+        ssh_config_path = os.path.expanduser("~/.ssh/config")
+        host_cfg: dict = {}
+        if os.path.exists(ssh_config_path):
+            cfg = paramiko.SSHConfig()
+            with open(ssh_config_path) as f:
+                cfg.parse(f)
+            host_cfg = cfg.lookup(self.config.host)
+
+        # Start with the resolved hostname (or the original alias)
+        hostname = host_cfg.get("hostname", self.config.host)
         kwargs: dict = {
-            "hostname": self.config.host,
+            "hostname": hostname,
             "port": self.config.port,
             "timeout": timeout,
             "allow_agent": True,
             "look_for_keys": True,
         }
+
+        # Apply SSH config values as defaults, let explicit config override
         if self.config.username:
             kwargs["username"] = self.config.username
+        elif "user" in host_cfg:
+            kwargs["username"] = host_cfg["user"]
+
         if self.config.key_filename:
             kwargs["key_filename"] = self.config.key_filename
+        elif "identityfile" in host_cfg:
+            kwargs["key_filename"] = [
+                os.path.expanduser(k) for k in host_cfg["identityfile"]
+            ]
+
+        if self.config.port != 22:
+            kwargs["port"] = self.config.port
+        elif "port" in host_cfg:
+            kwargs["port"] = int(host_cfg["port"])
+
         if self.config.passphrase:
             kwargs["passphrase"] = self.config.passphrase
+
+        # ProxyCommand support from SSH config
+        if not self.config.jump_host and "proxycommand" in host_cfg:
+            kwargs["sock"] = paramiko.ProxyCommand(host_cfg["proxycommand"])
+
         return kwargs
 
     def _connect_via_jump(self, connect_kwargs: dict, timeout: int) -> None:

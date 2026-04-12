@@ -1,7 +1,8 @@
 """Tests for SSH wrapper functionality."""
 
+import os
 import socket
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, mock_open, patch, PropertyMock
 
 import paramiko
 import pytest
@@ -303,3 +304,78 @@ class TestSSHClientClose:
     def test_host_property(self, ssh_config):
         client = SSHClient(ssh_config)
         assert client.host == "testhost"
+
+
+class TestSSHConfigParsing:
+    """Test that ~/.ssh/config host aliases are resolved by paramiko."""
+
+    SSH_CONFIG_CONTENT = """\
+Host myalias
+    HostName real.server.com
+    User remoteuser
+    Port 2222
+    IdentityFile ~/.ssh/id_custom
+
+Host proxy-host
+    HostName behind.firewall.com
+    User proxyuser
+    ProxyCommand ssh -W %h:%p bastion
+"""
+
+    def _make_client_with_ssh_config(self, config: SSHConfig):
+        """Create an SSHClient and build kwargs with a fake ~/.ssh/config."""
+        client = SSHClient(config)
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.open", mock_open(read_data=self.SSH_CONFIG_CONTENT)
+        ):
+            return client._build_connect_kwargs(timeout=10)
+
+    def test_resolves_hostname_from_alias(self):
+        config = SSHConfig(host="myalias")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["hostname"] == "real.server.com"
+
+    def test_resolves_user_from_ssh_config(self):
+        config = SSHConfig(host="myalias")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["username"] == "remoteuser"
+
+    def test_resolves_port_from_ssh_config(self):
+        config = SSHConfig(host="myalias")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["port"] == 2222
+
+    def test_resolves_identity_file_from_ssh_config(self):
+        config = SSHConfig(host="myalias")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["key_filename"] == [os.path.expanduser("~/.ssh/id_custom")]
+
+    def test_explicit_config_overrides_ssh_config(self):
+        config = SSHConfig(
+            host="myalias", username="override", port=3333, key_filename="/my/key"
+        )
+        kwargs = self._make_client_with_ssh_config(config)
+        # hostname still resolved from ssh config
+        assert kwargs["hostname"] == "real.server.com"
+        # but user, port, key overridden by explicit config
+        assert kwargs["username"] == "override"
+        assert kwargs["port"] == 3333
+        assert kwargs["key_filename"] == "/my/key"
+
+    def test_unknown_host_passes_through(self):
+        config = SSHConfig(host="unknown-host")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["hostname"] == "unknown-host"
+
+    def test_proxy_command_from_ssh_config(self):
+        config = SSHConfig(host="proxy-host")
+        kwargs = self._make_client_with_ssh_config(config)
+        assert kwargs["hostname"] == "behind.firewall.com"
+        assert isinstance(kwargs["sock"], paramiko.ProxyCommand)
+
+    def test_no_ssh_config_file(self):
+        config = SSHConfig(host="somehost")
+        client = SSHClient(config)
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["hostname"] == "somehost"
