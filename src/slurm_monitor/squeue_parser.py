@@ -16,6 +16,12 @@ class SlurmJob:
     time: str
     work_dir: Optional[str] = None
     gres: Optional[str] = None
+    # Pending job fields (populated for PENDING jobs only)
+    pending_reason: Optional[str] = None
+    priority: Optional[int] = None
+    qos: Optional[str] = None
+    submit_time: Optional[str] = None
+    queue_rank: Optional[int] = None
 
     def to_dict(self) -> dict[str, Optional[str]]:
         """Convert job to dictionary representation."""

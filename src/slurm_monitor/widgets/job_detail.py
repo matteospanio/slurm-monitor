@@ -36,6 +36,24 @@ class JobDetail(Static):
         text.append(job.state, style="bold")
         text.append("  Time: ", style="dim")
         text.append(job.time, style="bold")
+
+        if job.state == "PENDING":
+            if job.pending_reason:
+                text.append("  Reason: ", style="dim")
+                text.append(job.pending_reason, style="yellow bold")
+            if job.queue_rank is not None:
+                text.append("  Rank: ", style="dim")
+                text.append(f"#{job.queue_rank}", style="cyan bold")
+            if job.qos:
+                text.append("  QOS: ", style="dim")
+                text.append(job.qos, style="bold")
+            if job.priority is not None:
+                text.append("  Priority: ", style="dim")
+                text.append(str(job.priority), style="bold")
+            if job.submit_time:
+                text.append("  Submitted: ", style="dim")
+                text.append(job.submit_time, style="bold")
+
         if job.work_dir:
             text.append("\nWork Dir: ", style="dim")
             text.append(job.work_dir)

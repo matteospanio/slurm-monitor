@@ -1,6 +1,7 @@
 """Main TUI application for Slurm Monitor."""
 
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,12 @@ from slurm_monitor.job_aggregator import (
     sort_jobs_by_time,
 )
 from slurm_monitor.log_path_resolver import LogPathResolver
+from slurm_monitor.queue_stats import (
+    ClusterQueueStats,
+    compute_queue_ranks,
+    fetch_cluster_queue_stats,
+    fetch_pending_details,
+)
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import (
     SSHAuthenticationError,
@@ -23,12 +30,23 @@ from slurm_monitor.ssh_wrapper import (
     SSHConnectionError,
     SSHTimeoutError,
 )
+from slurm_monitor.widgets.cluster_status import ClusterStatus
 from slurm_monitor.widgets.connection_status import ConnectionStatus
 from slurm_monitor.widgets.filter_bar import FilterBar
 from slurm_monitor.widgets.job_detail import JobDetail
 from slurm_monitor.widgets.job_detail_screen import JobDetailScreen
 from slurm_monitor.widgets.job_table import JobTable
 from slurm_monitor.widgets.status_bar import StatusBar
+
+
+@dataclass
+class FetchResult:
+    """Result of a background job fetch."""
+
+    profile_name: str
+    jobs: list[SlurmJob] = field(default_factory=list)
+    queue_stats: Optional[ClusterQueueStats] = None
+    error: Optional[Exception] = None
 
 
 class ProfileTab:
@@ -45,6 +63,8 @@ class ProfileTab:
         self._sacct_last_fetch: float = 0.0
         self._auth_prompted: bool = False
         self._auth_attempts: int = 0
+        self.queue_stats: Optional[ClusterQueueStats] = None
+        self._queue_stats_last_fetch: float = 0.0
 
     def close(self) -> None:
         """Clean up SSH connection."""
@@ -95,6 +115,7 @@ class SlurmMonitorApp(App):
             # Single profile: no tabs needed
             name, tab = next(iter(self._profile_tabs.items()))
             yield ConnectionStatus(id=f"status-{name}")
+            yield ClusterStatus(id=f"cluster-{name}")
             yield JobTable(id=f"table-{name}")
             yield JobDetail(id=f"detail-{name}")
         else:
@@ -102,6 +123,7 @@ class SlurmMonitorApp(App):
                 for name, tab in self._profile_tabs.items():
                     with TabPane(name, id=f"tab-{name}"):
                         yield ConnectionStatus(id=f"status-{name}")
+                        yield ClusterStatus(id=f"cluster-{name}")
                         yield JobTable(id=f"table-{name}")
                         yield JobDetail(id=f"detail-{name}")
 
@@ -165,12 +187,11 @@ class SlurmMonitorApp(App):
 
     def _fetch_jobs(
         self, tab: ProfileTab, profile_name: str
-    ) -> tuple[str, list[SlurmJob], Optional[Exception]]:
+    ) -> FetchResult:
         """Fetch jobs in a background thread.
 
         Returns:
-            Tuple of (profile_name, jobs, error).
-            error is None on success.
+            FetchResult with jobs, queue stats, and optional error.
         """
         from slurm_monitor.squeue_parser import fetch_squeue_jobs
         from slurm_monitor.sacct_parser import fetch_sacct_jobs
@@ -195,10 +216,50 @@ class SlurmMonitorApp(App):
             from slurm_monitor.job_aggregator import merge_jobs
 
             merged = merge_jobs(active_jobs, historical_jobs)
-            return (profile_name, merged, None)
+
+            # Fetch cluster-wide queue stats (cached separately, ~30s)
+            queue_stats = None
+            try:
+                if now - tab._queue_stats_last_fetch > 30:
+                    queue_stats = fetch_cluster_queue_stats(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    tab._queue_stats_last_fetch = now
+                else:
+                    queue_stats = tab.queue_stats
+            except Exception:
+                pass  # Non-critical — don't break the main fetch
+
+            # Enrich PENDING jobs with reason, priority, QOS, rank
+            pending_ids = [j.job_id for j in merged if j.state == "PENDING"]
+            if pending_ids:
+                try:
+                    details = fetch_pending_details(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    ranks = compute_queue_ranks(
+                        tab.ssh_client, pending_ids, timeout=tab.profile.ssh_timeout
+                    )
+                    for job in merged:
+                        if job.state == "PENDING" and job.job_id in details:
+                            info = details[job.job_id]
+                            job.pending_reason = info.reason
+                            job.priority = info.priority
+                            job.qos = info.qos
+                            job.submit_time = info.submit_time
+                        if job.job_id in ranks:
+                            job.queue_rank = ranks[job.job_id]
+                except Exception:
+                    pass  # Non-critical
+
+            return FetchResult(
+                profile_name=profile_name,
+                jobs=merged,
+                queue_stats=queue_stats,
+            )
 
         except (SSHConnectionError, SSHTimeoutError) as e:
-            return (profile_name, [], e)
+            return FetchResult(profile_name=profile_name, error=e)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
@@ -216,15 +277,15 @@ class SlurmMonitorApp(App):
             return
 
         if event.state == WorkerState.SUCCESS:
-            _, jobs, error = event.worker.result
+            result: FetchResult = event.worker.result
             status.is_loading = False
 
-            if error is not None:
-                error_msg = str(error)
+            if result.error is not None:
+                error_msg = str(result.error)
                 status.error_message = error_msg
 
                 if (
-                    isinstance(error, SSHAuthenticationError)
+                    isinstance(result.error, SSHAuthenticationError)
                     and not tab._auth_prompted
                     and tab._auth_attempts < 3
                 ):
@@ -238,8 +299,8 @@ class SlurmMonitorApp(App):
                             tab.profile.ssh.host,
                             tab.profile.ssh.username,
                         ),
-                        callback=lambda result, n=profile_name: (
-                            self._handle_password_result(n, result)
+                        callback=lambda r, n=profile_name: (
+                            self._handle_password_result(n, r)
                         ),
                     )
                 else:
@@ -247,7 +308,8 @@ class SlurmMonitorApp(App):
                         f"Error: {error_msg}", severity="error", timeout=5
                     )
             else:
-                tab.jobs = jobs
+                tab.jobs = result.jobs
+                tab.queue_stats = result.queue_stats
                 status.last_updated = datetime.now().strftime("%H:%M:%S")
                 status.error_message = None
                 tab._auth_attempts = 0
@@ -322,6 +384,12 @@ class SlurmMonitorApp(App):
         try:
             table = self.query_one(f"#table-{profile_name}", JobTable)
             table.update_jobs(filtered)
+        except Exception:
+            pass
+
+        try:
+            cluster = self.query_one(f"#cluster-{profile_name}", ClusterStatus)
+            cluster.update_stats(tab.queue_stats)
         except Exception:
             pass
 

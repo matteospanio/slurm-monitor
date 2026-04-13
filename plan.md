@@ -337,3 +337,38 @@ Goal: Allow users to authenticate via password/passphrase when no SSH agent or k
   - `_handle_password_result` callback injects credentials and triggers retry.
   - Successful connection resets auth attempt counter.
   - Verification: 245 tests pass.
+
+## 🔄 Epic 12: Stable Cursor + Cluster Queue Overview
+
+Goal: Fix cursor reset on table refresh and add cluster-wide queue monitoring with pending job ranking.
+
+- [x] Task 12.1: Preserve Cursor Position During Refresh
+
+  - Track selected job_id in `JobTable._current_job_ids` before `clear()`.
+  - After repopulating rows, restore cursor to the same job via `move_cursor()`.
+  - If the selected job disappeared, clamp cursor to nearest valid row.
+  - Verification: 7 new async Textual pilot tests in `test_job_table.py`.
+
+- [x] Task 12.2: Queue Stats Data Layer
+
+  - Extended `SlurmJob` with optional pending fields: `pending_reason`, `priority`, `qos`, `submit_time`, `queue_rank`.
+  - New module `queue_stats.py` with `ClusterQueueStats` dataclass and fetch functions:
+    - `fetch_cluster_queue_stats()` — counts RUNNING/PENDING via `squeue --noheader -o "%T"`.
+    - `fetch_pending_details()` — fetches reason, priority, QOS, submit time for user's pending jobs.
+    - `compute_queue_ranks()` — determines 1-based queue rank by sorting all pending jobs by priority.
+  - Verification: 16 new tests in `test_queue_stats.py`.
+
+- [x] Task 12.3: Refresh Cycle Integration
+
+  - Replaced 3-tuple return from `_fetch_jobs()` with `FetchResult` dataclass.
+  - Added cluster queue stats fetch (cached ~30s) and pending job enrichment to the refresh cycle.
+  - Queue stats and pending details are non-critical — errors don't break the main job fetch.
+  - Updated `on_worker_state_changed()` to unpack `FetchResult`.
+  - Verification: All 4 existing `test_app.py` tests updated and passing.
+
+- [x] Task 12.4: UI Updates
+
+  - `StatusBar` now shows cluster-wide totals: "Cluster: N running, M pending".
+  - `JobTable` has two new columns: "Reason" and "Rank" (populated only for PENDING jobs).
+  - `JobDetail` panel shows pending reason, queue rank, QOS, priority, and submit time for PENDING jobs.
+  - Verification: 273 tests pass. Pre-commit hooks pass.
