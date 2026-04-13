@@ -37,7 +37,7 @@ class TestFetchJobsErrorHandling:
 
         assert profile_name == "test"
         assert jobs == []
-        assert "Connection refused" in error
+        assert "Connection refused" in str(error)
 
     def test_ssh_timeout_error_returns_empty_jobs(self, app):
         tab = app._profile_tabs["test"]
@@ -50,7 +50,7 @@ class TestFetchJobsErrorHandling:
 
         assert profile_name == "test"
         assert jobs == []
-        assert "Timed out" in error
+        assert "Timed out" in str(error)
 
     def test_successful_fetch_returns_no_error(self, app):
         tab = app._profile_tabs["test"]
@@ -81,4 +81,4 @@ class TestFetchJobsErrorHandling:
 
         assert profile_name == "test"
         assert jobs == []
-        assert "Connection lost" in error
+        assert "Connection lost" in str(error)

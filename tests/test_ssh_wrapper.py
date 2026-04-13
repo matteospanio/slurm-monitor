@@ -9,6 +9,7 @@ import pytest
 
 from slurm_monitor.config import SSHConfig
 from slurm_monitor.ssh_wrapper import (
+    SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,
     SSHTimeoutError,
@@ -379,3 +380,158 @@ Host proxy-host
         with patch("os.path.exists", return_value=False):
             kwargs = client._build_connect_kwargs(timeout=10)
         assert kwargs["hostname"] == "somehost"
+
+
+class TestSSHAuthenticationError:
+    """Test suite for SSHAuthenticationError and runtime credentials."""
+
+    def test_auth_error_is_subclass_of_connection_error(self):
+        assert issubclass(SSHAuthenticationError, SSHConnectionError)
+
+    def test_auth_failure_raises_authentication_error(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.AuthenticationException(
+                "auth failed"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHAuthenticationError, match="authentication.*failed"):
+                client.connect()
+
+    def test_set_credentials_stores_password(self, ssh_config):
+        client = SSHClient(ssh_config)
+        client.set_credentials(password="secret")
+        assert client._runtime_password == "secret"
+        assert client._runtime_passphrase is None
+
+    def test_set_credentials_stores_passphrase(self, ssh_config):
+        client = SSHClient(ssh_config)
+        client.set_credentials(passphrase="keypass")
+        assert client._runtime_passphrase == "keypass"
+        assert client._runtime_password is None
+
+    def test_set_credentials_closes_existing_connection(self, ssh_config):
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            client.connect()
+            client.set_credentials(password="secret")
+
+            mock_instance.close.assert_called_once()
+            assert client._client is None
+
+    def test_runtime_password_in_connect_kwargs(self, ssh_config):
+        client = SSHClient(ssh_config)
+        client.set_credentials(password="secret")
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["password"] == "secret"
+
+    def test_runtime_passphrase_in_connect_kwargs(self, ssh_config):
+        client = SSHClient(ssh_config)
+        client.set_credentials(passphrase="keypass")
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["passphrase"] == "keypass"
+
+    def test_runtime_passphrase_overrides_config(self):
+        config = SSHConfig(host="testhost", passphrase="config-pass")
+        client = SSHClient(config)
+        client.set_credentials(passphrase="runtime-pass")
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["passphrase"] == "runtime-pass"
+
+    def test_config_passphrase_used_without_runtime(self):
+        config = SSHConfig(host="testhost", passphrase="config-pass")
+        client = SSHClient(config)
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["passphrase"] == "config-pass"
+
+    def test_runtime_credentials_disable_agent(self, ssh_config):
+        """When credentials are set, agent and key discovery are disabled."""
+        client = SSHClient(ssh_config)
+        client.set_credentials(password="secret")
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["allow_agent"] is False
+        assert kwargs["look_for_keys"] is False
+
+    def test_no_credentials_enables_agent(self, ssh_config):
+        """Without runtime credentials, agent and key discovery are enabled."""
+        client = SSHClient(ssh_config)
+        with patch("os.path.exists", return_value=False):
+            kwargs = client._build_connect_kwargs(timeout=10)
+        assert kwargs["allow_agent"] is True
+        assert kwargs["look_for_keys"] is True
+
+    def test_transport_crash_raises_authentication_error(self, ssh_config):
+        """AttributeError from dead transport during auth is treated as auth error."""
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = AttributeError(
+                "'NoneType' object has no attribute '_log'"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHAuthenticationError, match="too many agent keys"):
+                client.connect()
+
+    def test_no_existing_session_raises_authentication_error(self, ssh_config):
+        """SSHException 'No existing session' (agent unavailable) is auth error."""
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.SSHException(
+                "No existing session"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHAuthenticationError, match="No existing session"):
+                client.connect()
+
+    def test_generic_ssh_exception_raises_connection_error(self, ssh_config):
+        """Non-auth SSHException should still raise SSHConnectionError."""
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.connect.side_effect = paramiko.SSHException(
+                "Incompatible ssh peer"
+            )
+            mock_cls.return_value = mock_instance
+
+            client = SSHClient(ssh_config)
+            with pytest.raises(SSHConnectionError):
+                client.connect()
+            # Ensure it's NOT SSHAuthenticationError
+            with pytest.raises(SSHConnectionError) as exc_info:
+                client2 = SSHClient(ssh_config)
+                client2.connect()
+            assert not isinstance(exc_info.value, SSHAuthenticationError)
+
+    def test_runtime_credentials_in_jump_host(self):
+        config = SSHConfig(
+            host="targethost", username="testuser", jump_host="bastion.edu"
+        )
+        with patch("paramiko.SSHClient") as mock_cls:
+            mock_jump = MagicMock()
+            mock_target = MagicMock()
+            mock_transport = MagicMock()
+            mock_channel = MagicMock()
+            mock_jump.get_transport.return_value = mock_transport
+            mock_transport.open_channel.return_value = mock_channel
+
+            mock_cls.side_effect = [mock_target, mock_jump]
+
+            client = SSHClient(config)
+            client.set_credentials(password="secret", passphrase="keypass")
+            client.connect()
+
+            jump_kwargs = mock_jump.connect.call_args[1]
+            assert jump_kwargs["password"] == "secret"
+            assert jump_kwargs["passphrase"] == "keypass"

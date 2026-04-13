@@ -13,6 +13,10 @@ class SSHConnectionError(Exception):
     """Raised when SSH connection fails."""
 
 
+class SSHAuthenticationError(SSHConnectionError):
+    """Raised when SSH authentication fails (wrong/missing credentials)."""
+
+
 class SSHTimeoutError(Exception):
     """Raised when SSH command times out."""
 
@@ -34,11 +38,31 @@ class SSHClient:
         self._client: Optional[paramiko.SSHClient] = None
         self._jump_client: Optional[paramiko.SSHClient] = None
         self._jump_channel = None
+        self._runtime_password: Optional[str] = None
+        self._runtime_passphrase: Optional[str] = None
 
     @property
     def host(self) -> str:
         """Return the configured host."""
         return self.config.host
+
+    def set_credentials(
+        self,
+        password: Optional[str] = None,
+        passphrase: Optional[str] = None,
+    ) -> None:
+        """Set runtime credentials for authentication.
+
+        Closes any existing connection so the next call reconnects
+        with the new credentials. Credentials are held in memory only.
+
+        Args:
+            password: SSH password for password-based authentication
+            passphrase: Passphrase for encrypted SSH keys
+        """
+        self._runtime_password = password
+        self._runtime_passphrase = passphrase
+        self.close()
 
     def connect(self, timeout: int = 10) -> None:
         """Establish SSH connection.
@@ -76,13 +100,30 @@ class SSHClient:
             ) from e
         except paramiko.AuthenticationException as e:
             self.close()
-            raise SSHConnectionError(
+            raise SSHAuthenticationError(
                 f"SSH authentication to {self.config.host} failed: {e}"
             ) from e
         except (paramiko.SSHException, OSError) as e:
             self.close()
+            # "No existing session" occurs when the SSH agent is
+            # unavailable — providing a password can resolve it.
+            msg = str(e).lower()
+            if "no existing session" in msg or "authentication" in msg:
+                raise SSHAuthenticationError(
+                    f"SSH connection to {self.config.host} failed: {e}"
+                ) from e
             raise SSHConnectionError(
                 f"SSH connection to {self.config.host} failed: {e}"
+            ) from e
+        except AttributeError as e:
+            # Paramiko bug: when agent keys exhaust MaxAuthTries the
+            # transport dies, then paramiko tries to log through the
+            # dead transport and raises AttributeError.  Treat as auth
+            # failure so the password prompt can recover.
+            self.close()
+            raise SSHAuthenticationError(
+                f"SSH authentication to {self.config.host} failed: "
+                f"too many agent keys rejected by server"
             ) from e
 
     def _build_connect_kwargs(self, timeout: int) -> dict:
@@ -102,12 +143,18 @@ class SSHClient:
 
         # Start with the resolved hostname (or the original alias)
         hostname = host_cfg.get("hostname", self.config.host)
+        # When runtime credentials are provided, skip the SSH agent to
+        # avoid exhausting MaxAuthTries with unrelated agent keys before
+        # the password/passphrase is even attempted.
+        has_runtime_creds = bool(
+            self._runtime_password or self._runtime_passphrase
+        )
         kwargs: dict = {
             "hostname": hostname,
             "port": self.config.port,
             "timeout": timeout,
-            "allow_agent": True,
-            "look_for_keys": True,
+            "allow_agent": not has_runtime_creds,
+            "look_for_keys": not has_runtime_creds,
         }
 
         # Apply SSH config values as defaults, let explicit config override
@@ -128,8 +175,13 @@ class SSHClient:
         elif "port" in host_cfg:
             kwargs["port"] = int(host_cfg["port"])
 
-        if self.config.passphrase:
+        if self._runtime_passphrase:
+            kwargs["passphrase"] = self._runtime_passphrase
+        elif self.config.passphrase:
             kwargs["passphrase"] = self.config.passphrase
+
+        if self._runtime_password:
+            kwargs["password"] = self._runtime_password
 
         # ProxyCommand support from SSH config
         if not self.config.jump_host and "proxycommand" in host_cfg:
@@ -151,6 +203,10 @@ class SSHClient:
         }
         if self.config.username:
             jump_kwargs["username"] = self.config.username
+        if self._runtime_password:
+            jump_kwargs["password"] = self._runtime_password
+        if self._runtime_passphrase:
+            jump_kwargs["passphrase"] = self._runtime_passphrase
 
         self._jump_client.connect(**jump_kwargs)
 

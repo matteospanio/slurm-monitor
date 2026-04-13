@@ -17,7 +17,12 @@ from slurm_monitor.job_aggregator import (
 )
 from slurm_monitor.log_path_resolver import LogPathResolver
 from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient, SSHConnectionError, SSHTimeoutError
+from slurm_monitor.ssh_wrapper import (
+    SSHAuthenticationError,
+    SSHClient,
+    SSHConnectionError,
+    SSHTimeoutError,
+)
 from slurm_monitor.widgets.connection_status import ConnectionStatus
 from slurm_monitor.widgets.filter_bar import FilterBar
 from slurm_monitor.widgets.job_detail import JobDetail
@@ -38,6 +43,8 @@ class ProfileTab:
         self.refresh_in_progress = False
         self._sacct_cache: list[SlurmJob] = []
         self._sacct_last_fetch: float = 0.0
+        self._auth_prompted: bool = False
+        self._auth_attempts: int = 0
 
     def close(self) -> None:
         """Clean up SSH connection."""
@@ -158,12 +165,12 @@ class SlurmMonitorApp(App):
 
     def _fetch_jobs(
         self, tab: ProfileTab, profile_name: str
-    ) -> tuple[str, list[SlurmJob], Optional[str]]:
+    ) -> tuple[str, list[SlurmJob], Optional[Exception]]:
         """Fetch jobs in a background thread.
 
         Returns:
-            Tuple of (profile_name, jobs, error_message).
-            error_message is None on success.
+            Tuple of (profile_name, jobs, error).
+            error is None on success.
         """
         from slurm_monitor.squeue_parser import fetch_squeue_jobs
         from slurm_monitor.sacct_parser import fetch_sacct_jobs
@@ -191,7 +198,7 @@ class SlurmMonitorApp(App):
             return (profile_name, merged, None)
 
         except (SSHConnectionError, SSHTimeoutError) as e:
-            return (profile_name, [], str(e))
+            return (profile_name, [], e)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
@@ -209,16 +216,41 @@ class SlurmMonitorApp(App):
             return
 
         if event.state == WorkerState.SUCCESS:
-            _, jobs, error_msg = event.worker.result
+            _, jobs, error = event.worker.result
             status.is_loading = False
 
-            if error_msg:
+            if error is not None:
+                error_msg = str(error)
                 status.error_message = error_msg
-                self.notify(f"Error: {error_msg}", severity="error", timeout=5)
+
+                if (
+                    isinstance(error, SSHAuthenticationError)
+                    and not tab._auth_prompted
+                    and tab._auth_attempts < 3
+                ):
+                    tab._auth_prompted = True
+                    from slurm_monitor.widgets.password_prompt import (
+                        PasswordPromptScreen,
+                    )
+
+                    self.push_screen(
+                        PasswordPromptScreen(
+                            tab.profile.ssh.host,
+                            tab.profile.ssh.username,
+                        ),
+                        callback=lambda result, n=profile_name: (
+                            self._handle_password_result(n, result)
+                        ),
+                    )
+                else:
+                    self.notify(
+                        f"Error: {error_msg}", severity="error", timeout=5
+                    )
             else:
                 tab.jobs = jobs
                 status.last_updated = datetime.now().strftime("%H:%M:%S")
                 status.error_message = None
+                tab._auth_attempts = 0
 
                 # Only update UI if this is the active tab
                 if profile_name == self._get_active_profile_name():
@@ -236,6 +268,24 @@ class SlurmMonitorApp(App):
         elif event.state == WorkerState.CANCELLED:
             status.is_loading = False
             tab.refresh_in_progress = False
+
+    def _handle_password_result(
+        self, profile_name: str, password: Optional[str]
+    ) -> None:
+        """Handle the result from the password prompt screen."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        tab._auth_prompted = False
+
+        if password is None:
+            self.notify("Authentication cancelled", severity="warning", timeout=3)
+            return
+
+        tab.ssh_client.set_credentials(password=password, passphrase=password)
+        tab._auth_attempts += 1
+        self._refresh_profile(profile_name)
 
     def _get_filtered_jobs(self, jobs: list[SlurmJob]) -> list[SlurmJob]:
         """Apply current filters and sorting to a job list."""

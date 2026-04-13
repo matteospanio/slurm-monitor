@@ -310,3 +310,30 @@ Goal: Make the TUI more visually polished and information-dense.
   - Header now shows stream type (stdout/stderr), follow mode indicator (FOLLOW/PAUSED), and path.
   - Header updates dynamically when toggling follow mode.
   - Verification: 231 tests pass.
+
+## 🔐 Epic 11: Interactive SSH Password Authentication
+
+Goal: Allow users to authenticate via password/passphrase when no SSH agent or key is available.
+
+- [x] Task 11.1: SSHAuthenticationError and Runtime Credentials
+
+  - Added `SSHAuthenticationError(SSHConnectionError)` subclass to distinguish auth failures.
+  - Added `set_credentials(password, passphrase)` method on `SSHClient` for runtime credential injection (memory only).
+  - Runtime credentials included in connect kwargs and jump host kwargs.
+  - Runtime passphrase overrides config passphrase.
+  - Verification: 11 new tests pass covering exception hierarchy, credential storage, kwargs injection, and jump host support.
+
+- [x] Task 11.2: PasswordPromptScreen Modal
+
+  - New `PasswordPromptScreen(ModalScreen)` in `widgets/password_prompt.py`.
+  - Displays host/username, masked password input, dismisses on Enter (submit) or Escape (cancel).
+  - Inline CSS for centered dialog overlay.
+  - Verification: 4 new tests pass.
+
+- [x] Task 11.3: App Integration
+
+  - Auth failure detection in `on_worker_state_changed` via `isinstance(error, SSHAuthenticationError)`.
+  - Pushes `PasswordPromptScreen` on first auth failure (up to 3 attempts).
+  - `_handle_password_result` callback injects credentials and triggers retry.
+  - Successful connection resets auth attempt counter.
+  - Verification: 245 tests pass.
