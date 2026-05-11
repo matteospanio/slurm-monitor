@@ -93,6 +93,35 @@ class TestMergeJobs:
         result = merge_jobs(active, historical)
         assert [j.job_id for j in result] == ["12350", "12345", "12340"]
 
+    def test_merge_handles_array_master_id(self):
+        active = [
+            SlurmJob("2172044_[0-5]", "arr", "PENDING", "00:00:00", "/home/user"),
+        ]
+        result = merge_jobs(active, [])
+        assert len(result) == 1
+        assert result[0].job_id == "2172044_[0-5]"
+
+    def test_merge_sorts_array_and_plain_jobs(self):
+        active = [
+            SlurmJob("2172044_[0-5]", "arr", "PENDING", "00:00:00", "/h"),
+            SlurmJob("2172040", "plain", "RUNNING", "00:01:00", "/h"),
+            SlurmJob("2172050", "newer", "RUNNING", "00:02:00", "/h"),
+        ]
+        result = merge_jobs(active, [])
+        assert [j.job_id for j in result] == [
+            "2172050",
+            "2172044_[0-5]",
+            "2172040",
+        ]
+
+    def test_merge_sorts_expanded_array_element(self):
+        active = [
+            SlurmJob("2172044_3", "arr3", "RUNNING", "00:00:00", "/h"),
+            SlurmJob("2172044_1", "arr1", "RUNNING", "00:00:00", "/h"),
+        ]
+        result = merge_jobs(active, [])
+        assert [j.job_id for j in result] == ["2172044_3", "2172044_1"]
+
 
 class TestSortJobsByTime:
     """Test suite for sort_jobs_by_time function."""

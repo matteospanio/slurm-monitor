@@ -1,5 +1,6 @@
 """Data aggregation service for merging active and historical Slurm jobs."""
 
+import re
 from typing import Optional
 
 from slurm_monitor.sacct_parser import fetch_sacct_jobs
@@ -63,9 +64,29 @@ def merge_jobs(
         job_dict[job.job_id] = job
 
     merged_list = list(job_dict.values())
-    merged_list.sort(key=lambda job: int(job.job_id), reverse=True)
+    merged_list.sort(key=lambda job: _job_sort_key(job.job_id), reverse=True)
 
     return merged_list
+
+
+def _job_sort_key(job_id: str) -> tuple[int, int]:
+    """Build a sort key that tolerates Slurm array-job IDs.
+
+    Array jobs have IDs like ``2172044_[0-5]`` (master) or ``2172044_3``
+    (expanded element); plain jobs are simple integers.
+    """
+    base, _, tail = job_id.partition("_")
+    try:
+        base_id = int(base)
+    except ValueError:
+        return (-1, -1)
+
+    if not tail:
+        return (base_id, -1)
+
+    match = re.search(r"\d+", tail)
+    task_id = int(match.group()) if match else -1
+    return (base_id, task_id)
 
 
 def time_to_seconds(time_str: str) -> int:
