@@ -145,6 +145,28 @@ class TestParseNodes:
         n = parse_nodes(output)[0]
         assert n.reason == ""
 
+    def test_dedupes_node_appearing_in_multiple_partitions(self):
+        """sinfo -N emits one line per (node, partition); the parser must
+        merge those so the dashboard DataTable doesn't see duplicate keys."""
+        output = (
+            "gpu01|gpu|idle|0/32/0/32|256000|256000|gpu:l40s:4|\n"
+            "gpu01|long|idle|0/32/0/32|256000|256000|gpu:l40s:4|\n"
+            "gpu01|debug|idle|0/32/0/32|256000|256000|gpu:l40s:4|\n"
+        )
+        nodes = parse_nodes(output)
+        assert len(nodes) == 1
+        assert nodes[0].name == "gpu01"
+        assert nodes[0].partition == "gpu,long,debug"
+
+    def test_dedupe_preserves_reason_from_any_row(self):
+        output = (
+            "cpu01|cpu|drained|0/0/0/64|0|512000|(null)|\n"
+            "cpu01|long|drained|0/0/0/64|0|512000|(null)|maintenance\n"
+        )
+        nodes = parse_nodes(output)
+        assert len(nodes) == 1
+        assert nodes[0].reason == "maintenance"
+
 
 class TestParsePartitions:
     def test_aggregates_node_states(self):
@@ -179,6 +201,29 @@ class TestParsePartitions:
         p = partitions[0]
         assert p.available is False
         assert p.nodes_down == 2
+
+    def test_dedupes_partition_grouped_by_state(self):
+        """sinfo groups by state within a partition, so the parser must
+        sum the duplicate lines instead of crashing on DuplicateKey."""
+        partition_output = (
+            "gpu|2|0/64/0/64|gpu:l40s:8|256000|up\n"   # 2 idle nodes
+            "gpu|1|32/0/0/32|gpu:l40s:4|256000|up\n"   # 1 allocated node
+        )
+        node_output = (
+            "gpu01|gpu|idle|0/32/0/32|256000|256000|gpu:l40s:4|\n"
+            "gpu02|gpu|idle|0/32/0/32|256000|256000|gpu:l40s:4|\n"
+            "gpu03|gpu|allocated|32/0/0/32|10000|256000|gpu:l40s:4|\n"
+        )
+        nodes = parse_nodes(node_output)
+        partitions = parse_partitions(partition_output, nodes)
+        # Only one partition entry, summed correctly
+        assert len(partitions) == 1
+        p = partitions[0]
+        assert p.nodes_total == 3
+        assert p.cpus_total == 96
+        assert p.gpus_total == 12
+        # Memory shouldn't double — every line repeats the per-node value
+        assert p.mem_total_mb == 256000
 
     def test_multi_partition_node(self):
         """A node belonging to two partitions should bump both partition counts."""

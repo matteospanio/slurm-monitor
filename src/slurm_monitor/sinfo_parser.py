@@ -153,8 +153,16 @@ def parse_nodes(output: str) -> list[NodeStats]:
 
     Expected format (pipe-delimited, no header):
         Name|Partition|State|CPUs(A/I/O/T)|FreeMem|RealMemory|Gres|Reason
+
+    ``sinfo -N`` emits one line per (node, partition) pair, so a single
+    physical node serving multiple partitions appears multiple times. We
+    merge those duplicates here so the caller sees one :class:`NodeStats`
+    per unique node name (with partitions comma-joined). This keeps the
+    downstream ``DataTable`` keyed by node name and avoids ``DuplicateKey``
+    errors on render.
     """
-    nodes: list[NodeStats] = []
+    by_name: dict[str, NodeStats] = {}
+    order: list[str] = []
     for line in output.splitlines():
         line = line.strip()
         if not line:
@@ -166,30 +174,49 @@ def parse_nodes(output: str) -> list[NodeStats]:
         reason = parts[7] if len(parts) >= 8 else ""
 
         alloc, _idle, _other, total_cpus = parse_cpu_aiot(cpus_aiot)
-        node = NodeStats(
-            name=name.strip(),
-            partition=partition.strip(),
-            state=normalize_state(state_raw),
-            cpus_alloc=alloc,
-            cpus_total=total_cpus,
-            mem_free_mb=parse_mem_mb(free_mem),
-            mem_total_mb=parse_mem_mb(total_mem),
-            gpus_total=parse_gres_total(gres),
-            gres_raw=gres.strip(),
-            reason=reason.strip() if reason.strip().lower() not in ("(null)", "none", "") else "",
+        state = normalize_state(state_raw)
+        reason_clean = (
+            reason.strip()
+            if reason.strip().lower() not in ("(null)", "none", "")
+            else ""
         )
-        # GPU "used" is unknown from `%G` alone; treat fully-allocated nodes
-        # as using all their GPUs and idle nodes as using none. Mixed nodes
-        # are conservatively reported as used == declared (Slurm doesn't
-        # expose per-job GPU counts cheaply through sinfo).
-        if node.state in ("allocated", "alloc"):
-            node.gpus_used = node.gpus_total
-        elif node.state in ("mixed",):
-            node.gpus_used = node.gpus_total
+
+        node_name = name.strip()
+        existing = by_name.get(node_name)
+        if existing is None:
+            node = NodeStats(
+                name=node_name,
+                partition=partition.strip(),
+                state=state,
+                cpus_alloc=alloc,
+                cpus_total=total_cpus,
+                mem_free_mb=parse_mem_mb(free_mem),
+                mem_total_mb=parse_mem_mb(total_mem),
+                gpus_total=parse_gres_total(gres),
+                gres_raw=gres.strip(),
+                reason=reason_clean,
+            )
+            # GPU "used" is unknown from `%G` alone; treat allocated and
+            # mixed nodes as fully consuming their declared GPUs (Slurm
+            # doesn't expose per-job GPU counts cheaply through sinfo).
+            if state in ("allocated", "alloc", "mixed"):
+                node.gpus_used = node.gpus_total
+            else:
+                node.gpus_used = 0
+            by_name[node_name] = node
+            order.append(node_name)
         else:
-            node.gpus_used = 0
-        nodes.append(node)
-    return nodes
+            # Append the new partition to the existing entry if it isn't
+            # already listed.
+            existing_parts = [p.strip() for p in existing.partition.split(",") if p.strip()]
+            new_part = partition.strip()
+            if new_part and new_part not in existing_parts:
+                existing.partition = ",".join(existing_parts + [new_part])
+            # Reason can appear on any of the duplicate rows.
+            if not existing.reason and reason_clean:
+                existing.reason = reason_clean
+
+    return [by_name[name] for name in order]
 
 
 def parse_partitions(output: str, nodes: list[NodeStats]) -> list[PartitionStats]:
@@ -197,8 +224,13 @@ def parse_partitions(output: str, nodes: list[NodeStats]) -> list[PartitionStats
 
     Per-partition format:
         Name|Nodes|CPUs(A/I/O/T)|Gres|Mem|Avail
+
+    ``sinfo`` groups identical-state nodes together within a partition, so a
+    partition with nodes in multiple states emits multiple lines. We sum
+    those duplicates here. Per-state counts come from the node walk below.
     """
     partitions: dict[str, PartitionStats] = {}
+    order: list[str] = []
     for line in output.splitlines():
         line = line.strip()
         if not line:
@@ -212,16 +244,38 @@ def parse_partitions(output: str, nodes: list[NodeStats]) -> list[PartitionStats
             n_total = int(nodes_total)
         except ValueError:
             n_total = 0
-        partitions[name.strip()] = PartitionStats(
-            name=name.strip(),
-            nodes_total=n_total,
-            cpus_alloc=alloc,
-            cpus_idle=idle,
-            cpus_total=total_cpus,
-            gpus_total=parse_gres_total(gres),
-            mem_total_mb=parse_mem_mb(mem_total),
-            available=avail.strip().lower() == "up",
-        )
+        gpus_in_line = parse_gres_total(gres)
+        mem_in_line = parse_mem_mb(mem_total)
+        is_up = avail.strip().lower() == "up"
+        key = name.strip()
+
+        existing = partitions.get(key)
+        if existing is None:
+            partitions[key] = PartitionStats(
+                name=key,
+                nodes_total=n_total,
+                cpus_alloc=alloc,
+                cpus_idle=idle,
+                cpus_total=total_cpus,
+                gpus_total=gpus_in_line,
+                mem_total_mb=mem_in_line,
+                available=is_up,
+            )
+            order.append(key)
+        else:
+            existing.nodes_total += n_total
+            existing.cpus_alloc += alloc
+            existing.cpus_idle += idle
+            existing.cpus_total += total_cpus
+            existing.gpus_total += gpus_in_line
+            # ``%m`` reports the per-node RealMemory which sinfo repeats on
+            # every grouped line, so summing across all lines would double-
+            # count. Use the largest value seen (homogeneous partitions all
+            # report the same value; heterogeneous ones at least surface
+            # the biggest node).
+            if mem_in_line > existing.mem_total_mb:
+                existing.mem_total_mb = mem_in_line
+            existing.available = existing.available and is_up
 
     # Walk the node list to fill in per-partition state counts and GPU usage.
     for node in nodes:
@@ -247,7 +301,7 @@ def parse_partitions(output: str, nodes: list[NodeStats]) -> list[PartitionStats
         if ps.gpus_total and ps.gpus_used > ps.gpus_total:
             ps.gpus_used = ps.gpus_total
 
-    return list(partitions.values())
+    return [partitions[name] for name in order]
 
 
 def aggregate_capacity(nodes: list[NodeStats]) -> ClusterCapacity:
