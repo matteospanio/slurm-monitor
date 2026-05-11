@@ -85,8 +85,10 @@ class SlurmMonitorApp(App):
         ("?", "help", "Help"),
         ("j", "cursor_down", "Down"),
         ("k", "cursor_up", "Up"),
-        ("g", "scroll_home", "Top"),
-        ("shift+g", "scroll_end", "Bottom"),
+        ("g", "scroll_top", "Top"),
+        ("shift+g", "scroll_bottom", "Bottom"),
+        ("h", "previous_tab", "Prev tab"),
+        ("l", "next_tab", "Next tab"),
         ("enter", "view_job", "Details"),  # fallback when table not focused
         ("slash", "toggle_filter", "Filter"),
         ("1", "filter_running", "Running"),
@@ -451,7 +453,7 @@ class SlurmMonitorApp(App):
             "Slurm Job Monitor - Help\n\n"
             "q: Quit  r: Refresh  ?: Help\n"
             "j/k: Navigate  g/G: Top/Bottom\n"
-            "Enter: Job details  /: Search\n"
+            "h/l: Prev/Next tab  Enter: Job details  /: Search\n"
             "1: Running  2: Pending  3: Completed  4: Failed  0: All\n"
             "s: Cycle sort (id/time/name/state)\n"
             f"\nRefresh: {active.profile.refresh_interval}s  "
@@ -473,19 +475,47 @@ class SlurmMonitorApp(App):
         except Exception:
             pass
 
-    def action_scroll_home(self) -> None:
+    def action_scroll_top(self) -> None:
+        """Move cursor to the first row (vim `g`)."""
         name = self._get_active_profile_name()
         try:
-            self.query_one(f"#table-{name}", JobTable).action_scroll_home()
+            self.query_one(f"#table-{name}", JobTable).action_scroll_top()
         except Exception:
             pass
 
-    def action_scroll_end(self) -> None:
+    def action_scroll_bottom(self) -> None:
+        """Move cursor to the last row (vim `G`)."""
         name = self._get_active_profile_name()
         try:
-            self.query_one(f"#table-{name}", JobTable).action_scroll_end()
+            self.query_one(f"#table-{name}", JobTable).action_scroll_bottom()
         except Exception:
             pass
+
+    def action_next_tab(self) -> None:
+        """Switch to the next profile tab (vim `l`)."""
+        if len(self._profile_tabs) <= 1:
+            return
+        try:
+            tabbed = self.query_one(TabbedContent)
+        except Exception:
+            return
+        names = list(self._profile_tabs.keys())
+        current = self._get_active_profile_name()
+        idx = names.index(current) if current in names else 0
+        tabbed.active = f"tab-{names[(idx + 1) % len(names)]}"
+
+    def action_previous_tab(self) -> None:
+        """Switch to the previous profile tab (vim `h`)."""
+        if len(self._profile_tabs) <= 1:
+            return
+        try:
+            tabbed = self.query_one(TabbedContent)
+        except Exception:
+            return
+        names = list(self._profile_tabs.keys())
+        current = self._get_active_profile_name()
+        idx = names.index(current) if current in names else 0
+        tabbed.active = f"tab-{names[(idx - 1) % len(names)]}"
 
     def action_view_job(self) -> None:
         """Open the detail screen for the selected job."""

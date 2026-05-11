@@ -40,6 +40,7 @@ slurm-monitor
 | `r` | Manually refresh job data |
 | `j`/`k` | Navigate down/up (Vim-style) |
 | `g`/`G` | Jump to top/bottom of list |
+| `h`/`l` | Switch to previous/next profile tab |
 | `Enter` | Open job detail screen |
 | `o` | View stdout log (from detail screen) |
 | `e` | View stderr log (from detail screen) |

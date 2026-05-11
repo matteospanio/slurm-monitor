@@ -372,3 +372,20 @@ Goal: Fix cursor reset on table refresh and add cluster-wide queue monitoring wi
   - `JobTable` has two new columns: "Reason" and "Rank" (populated only for PENDING jobs).
   - `JobDetail` panel shows pending reason, queue rank, QOS, priority, and submit time for PENDING jobs.
   - Verification: 273 tests pass. Pre-commit hooks pass.
+
+## 🎮 Epic 13: Vim Navigation Polish
+
+Goal: Make the navigation match vim conventions across the whole interface.
+
+- [x] Task 13.1: Fix `g`/`G` to Move Cursor to Top/Bottom of Table
+
+  - App bindings were wired to `DataTable.action_scroll_home`/`action_scroll_end`, which (for a row-cursor table) only adjust horizontal scroll — the cursor stayed put.
+  - Switched the `g`/`G` bindings to `action_scroll_top`/`action_scroll_bottom`, the cursor-moving variants.
+  - Verification: New `test_g_moves_cursor_to_first_row` and `test_shift_g_moves_cursor_to_last_row` pilot tests pass.
+
+- [x] Task 13.2: Add `h`/`l` Tab Switching
+
+  - New `action_previous_tab` / `action_next_tab` bound to `h` / `l`, cycling through profile tabs with wrap-around.
+  - No-op when only one profile is configured.
+  - `JobDetailScreen` also gained `g`/`G` for scroll top/bottom to keep keybindings consistent across screens.
+  - Verification: 283 tests pass (7 new pilot tests for `j`/`k`/`g`/`G`/`h`/`l`).

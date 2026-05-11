@@ -61,6 +61,8 @@ class JobDetailScreen(Screen):
         Binding("e", "view_stderr", "View stderr"),
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
+        Binding("g", "scroll_home", "Top", show=False),
+        Binding("shift+g", "scroll_end", "Bottom", show=False),
     ]
 
     CSS = """
@@ -273,3 +275,9 @@ class JobDetailScreen(Screen):
 
     def action_scroll_up(self) -> None:
         self.query_one("#detail-scroll", ScrollableContainer).scroll_up()
+
+    def action_scroll_home(self) -> None:
+        self.query_one("#detail-scroll", ScrollableContainer).scroll_home()
+
+    def action_scroll_end(self) -> None:
+        self.query_one("#detail-scroll", ScrollableContainer).scroll_end()

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > The *Unreleased* section is for changes that are not yet released, but are going to be released in the next version.
 
+## [Unreleased]
+
+### Fixed
+
+- **`g`/`G` navigation now moves the cursor** to the first/last row of the job table. Previously bound to `scroll_home`/`scroll_end`, which only adjust horizontal scroll for row-cursor `DataTable`s and produced no visible effect.
+
+### Added
+
+- **`h`/`l` tab switching**: Vim-style keys cycle through profile tabs (no-op with a single profile).
+- **`g`/`G` in `JobDetailScreen`**: Scroll detail body to top/bottom for consistency with the job table and log viewer.
+- 7 new pilot tests in `test_app.py` covering `j`/`k`/`g`/`G`/`h`/`l` behavior.
+
 ## [0.3.0] - 2026-04-12
 
 ### Added
