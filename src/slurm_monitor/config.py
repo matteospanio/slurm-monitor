@@ -224,6 +224,24 @@ class ConfigLoader:
     ]
 
     @staticmethod
+    def locate(
+        config_path: Optional[Path] = None,
+    ) -> tuple[Path, bool]:
+        """Locate the config file the loader will use.
+
+        Returns ``(path, found)``. If ``config_path`` is given, the path is
+        returned verbatim with ``found = config_path.exists()``. Otherwise
+        walks :attr:`DEFAULT_CONFIG_PATHS` and returns the first match, or
+        the canonical default path with ``found = False``.
+        """
+        if config_path is not None:
+            return config_path, config_path.exists()
+        for path in ConfigLoader.DEFAULT_CONFIG_PATHS:
+            if path.exists():
+                return path, True
+        return ConfigLoader.DEFAULT_CONFIG_PATHS[0], False
+
+    @staticmethod
     def load(config_path: Optional[Path] = None) -> AppConfig:
         """Load configuration from file or use defaults.
 

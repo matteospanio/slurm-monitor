@@ -23,6 +23,12 @@ from slurm_monitor.queue_stats import (
     fetch_cluster_queue_stats,
     fetch_pending_details,
 )
+from slurm_monitor.sinfo_parser import (
+    ClusterCapacity,
+    NodeStats,
+    PartitionStats,
+    fetch_sinfo,
+)
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import (
     SSHAuthenticationError,
@@ -30,6 +36,7 @@ from slurm_monitor.ssh_wrapper import (
     SSHConnectionError,
     SSHTimeoutError,
 )
+from slurm_monitor.widgets.cluster_dashboard import ClusterDashboardScreen
 from slurm_monitor.widgets.cluster_status import ClusterStatus
 from slurm_monitor.widgets.connection_status import ConnectionStatus
 from slurm_monitor.widgets.filter_bar import FilterBar
@@ -37,6 +44,8 @@ from slurm_monitor.widgets.job_detail import JobDetail
 from slurm_monitor.widgets.job_detail_screen import JobDetailScreen
 from slurm_monitor.widgets.job_table import JobTable
 from slurm_monitor.widgets.status_bar import StatusBar
+
+SINFO_REFRESH_SECONDS = 60.0
 
 
 @dataclass
@@ -46,6 +55,10 @@ class FetchResult:
     profile_name: str
     jobs: list[SlurmJob] = field(default_factory=list)
     queue_stats: Optional[ClusterQueueStats] = None
+    cluster_capacity: Optional[ClusterCapacity] = None
+    partitions: list[PartitionStats] = field(default_factory=list)
+    nodes: list[NodeStats] = field(default_factory=list)
+    sinfo_fetched: bool = False
     error: Optional[Exception] = None
 
 
@@ -65,6 +78,10 @@ class ProfileTab:
         self._auth_attempts: int = 0
         self.queue_stats: Optional[ClusterQueueStats] = None
         self._queue_stats_last_fetch: float = 0.0
+        self.cluster_capacity: Optional[ClusterCapacity] = None
+        self.partitions: list[PartitionStats] = []
+        self.nodes: list[NodeStats] = []
+        self._sinfo_last_fetch: float = 0.0
 
     def close(self) -> None:
         """Clean up SSH connection."""
@@ -93,6 +110,7 @@ class SlurmMonitorApp(App):
         ("h", "previous_tab", "Prev tab"),
         ("l", "next_tab", "Next tab"),
         ("enter", "view_job", "Details"),  # fallback when table not focused
+        ("d", "view_dashboard", "Dashboard"),
         ("slash", "toggle_filter", "Filter"),
         ("1", "filter_running", "Running"),
         ("2", "filter_pending", "Pending"),
@@ -257,10 +275,28 @@ class SlurmMonitorApp(App):
                 except Exception:
                     pass  # Non-critical
 
+            # Fetch sinfo (cluster nodes + partitions) at a slower cadence.
+            cluster_capacity: Optional[ClusterCapacity] = None
+            partitions: list[PartitionStats] = []
+            nodes_data: list[NodeStats] = []
+            sinfo_fetched = False
+            try:
+                if now - tab._sinfo_last_fetch > SINFO_REFRESH_SECONDS:
+                    cluster_capacity, partitions, nodes_data = fetch_sinfo(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    sinfo_fetched = True
+            except Exception:
+                pass  # Non-critical — dashboard handles missing data gracefully
+
             return FetchResult(
                 profile_name=profile_name,
                 jobs=merged,
                 queue_stats=queue_stats,
+                cluster_capacity=cluster_capacity,
+                partitions=partitions,
+                nodes=nodes_data,
+                sinfo_fetched=sinfo_fetched,
             )
 
         except (SSHConnectionError, SSHTimeoutError) as e:
@@ -315,6 +351,11 @@ class SlurmMonitorApp(App):
             else:
                 tab.jobs = result.jobs
                 tab.queue_stats = result.queue_stats
+                if result.sinfo_fetched:
+                    tab.cluster_capacity = result.cluster_capacity
+                    tab.partitions = result.partitions
+                    tab.nodes = result.nodes
+                    tab._sinfo_last_fetch = time.time()
                 status.last_updated = datetime.now().strftime("%H:%M:%S")
                 status.error_message = None
                 tab._auth_attempts = 0
@@ -473,7 +514,8 @@ class SlurmMonitorApp(App):
             "Slurm Job Monitor - Help\n\n"
             "q: Quit  r: Refresh  ?: Help\n"
             "j/k: Navigate  g/G: Top/Bottom\n"
-            "h/l: Prev/Next tab  Enter: Job details  /: Search\n"
+            "h/l: Prev/Next tab  Enter: Job details  d: Cluster dashboard\n"
+            "/: Search\n"
             "1: Running  2: Pending  3: Completed  4: Failed  0: All\n"
             "s: Cycle sort (id/time/name/state)\n"
             f"\nRefresh: {active.profile.refresh_interval}s  "
@@ -536,6 +578,23 @@ class SlurmMonitorApp(App):
         current = self._get_active_profile_name()
         idx = names.index(current) if current in names else 0
         tabbed.active = f"tab-{names[(idx - 1) % len(names)]}"
+
+    def action_view_dashboard(self) -> None:
+        """Open the cluster dashboard for the active profile."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        self.push_screen(
+            ClusterDashboardScreen(
+                profile_name=name,
+                ssh_client=tab.ssh_client,
+                ssh_timeout=tab.profile.ssh_timeout,
+                initial_capacity=tab.cluster_capacity,
+                initial_partitions=tab.partitions,
+                initial_nodes=tab.nodes,
+            )
+        )
 
     def action_view_job(self) -> None:
         """Open the detail screen for the selected job."""

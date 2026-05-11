@@ -1,11 +1,82 @@
 """Command-line interface for Slurm Monitor."""
 
+import sys
 from pathlib import Path
 from typing import Optional
 
 import click
 
-from slurm_monitor.config import AppConfig, ConfigLoader
+from slurm_monitor.config import AppConfig, ConfigLoader, ProfileConfig
+
+
+def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
+    """Launch the interactive wizard, collect profiles, save to ``save_path``.
+
+    Returns the populated AppConfig (also written to disk) or None if the
+    user cancelled before saving any profile.
+    """
+    from textual.app import App, ComposeResult
+
+    from slurm_monitor.widgets.first_run_wizard import (
+        ConfirmScreen,
+        FirstRunWizardScreen,
+    )
+
+    collected: dict[str, ProfileConfig] = {}
+
+    class WizardApp(App):
+        """Tiny host app for the wizard. Lives just long enough to run the
+        single-profile flow, then exits."""
+
+        CSS = ""
+
+        def compose(self) -> ComposeResult:  # noqa: D401 — required by Textual
+            return []
+
+        def on_mount(self) -> None:
+            self._next_step()
+
+        def _next_step(self) -> None:
+            default_name = "default" if not collected else f"cluster{len(collected) + 1}"
+            self.push_screen(
+                FirstRunWizardScreen(default_name=default_name),
+                callback=self._after_wizard,
+            )
+
+        def _after_wizard(self, profile: Optional[ProfileConfig]) -> None:
+            if profile is None:
+                # User cancelled — bail out without writing anything
+                self.exit()
+                return
+            # Avoid clobbering an earlier profile with the same name
+            chosen_name = profile.name or "default"
+            if chosen_name in collected:
+                # Append a numeric suffix to keep the table key unique
+                i = 2
+                while f"{chosen_name}{i}" in collected:
+                    i += 1
+                chosen_name = f"{chosen_name}{i}"
+                profile.name = chosen_name
+            collected[chosen_name] = profile
+            self.push_screen(
+                ConfirmScreen("Add another cluster profile?"),
+                callback=self._after_confirm,
+            )
+
+        def _after_confirm(self, again: bool) -> None:
+            if again:
+                self._next_step()
+            else:
+                self.exit()
+
+    WizardApp().run()
+
+    if not collected:
+        return None
+
+    config = AppConfig(profiles=collected)
+    ConfigLoader.save_toml(config, save_path)
+    return config
 
 
 @click.command()
@@ -44,16 +115,34 @@ def main(
     """Slurm Monitor - TUI application for monitoring Slurm jobs."""
     from slurm_monitor.app import SlurmMonitorApp
 
-    app_config = ConfigLoader.load(config_path)
-
+    # When the user supplied --host or --config, skip the wizard entirely:
+    # they are explicitly telling us how to connect.
     if host:
-        from slurm_monitor.config import ProfileConfig, SSHConfig
+        from slurm_monitor.config import ProfileConfig as _ProfileConfig
+        from slurm_monitor.config import SSHConfig
 
-        profile = ProfileConfig(
-            name="default", ssh=SSHConfig(host=host)
-        )
+        profile = _ProfileConfig(name="default", ssh=SSHConfig(host=host))
         app_config = AppConfig(profiles={"default": profile})
-        profile_name = None  # use all (just the one we created)
+        profile_name = None
+    else:
+        located_path, found = ConfigLoader.locate(config_path)
+        if not found and config_path is None:
+            click.echo(
+                "No config found. Launching first-run setup wizard…", err=True
+            )
+            app_config = run_first_run_wizard(located_path)
+            if app_config is None:
+                click.echo(
+                    f"Setup cancelled. Edit {located_path} manually or "
+                    "re-run to retry.",
+                    err=True,
+                )
+                sys.exit(1)
+            click.echo(
+                f"Saved configuration to {located_path}.", err=True
+            )
+        else:
+            app_config = ConfigLoader.load(config_path)
 
     if list_profiles:
         if not app_config.profiles:

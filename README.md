@@ -41,6 +41,7 @@ slurm-monitor
 | `j`/`k` | Navigate down/up (Vim-style) |
 | `g`/`G` | Jump to top/bottom of list |
 | `h`/`l` | Switch to previous/next profile tab |
+| `d` | Open the cluster dashboard (capacity, partitions, nodes) |
 | `Enter` | Open job detail screen |
 | `o` | View stdout log (from detail screen) |
 | `e` | View stderr log (from detail screen) |
@@ -57,6 +58,11 @@ slurm-monitor
 1. **Job table** - Browse all jobs, filter and sort
 2. **Job detail screen** (`Enter`) - View scontrol stats: time/memory bars, GPU utilization, resources, schedule, log paths
 3. **Log viewer** (`o`/`e`) - Stream stdout or stderr with follow mode
+4. **Cluster dashboard** (`d`) - Cluster-wide CPU/GPU/memory bars, partition summary, and a per-node table (auto-refreshes every 60s)
+
+### First-run setup
+
+On the first launch, if no config file is found under `~/.config/slurm_monitor/` or the working directory, an interactive wizard collects host/username/key/log-pattern, optionally tests the SSH connection, and writes `~/.config/slurm_monitor/config.toml`. You can chain "Add another cluster?" to set up multiple profiles in one go. Pass `--config` or `--host` to skip the wizard entirely.
 
 ### Configuration
 

@@ -403,3 +403,50 @@ Goal: Make the navigation match vim conventions across the whole interface.
   - No-op when only one profile is configured.
   - `JobDetailScreen` also gained `g`/`G` for scroll top/bottom to keep keybindings consistent across screens.
   - Verification: 283 tests pass (7 new pilot tests for `j`/`k`/`g`/`G`/`h`/`l`).
+
+## 📊 Epic 14: Cluster Dashboard
+
+Goal: Give users a single-keystroke view of cluster capacity (CPUs, GPUs, memory), per-partition state, and per-node detail before open-sourcing the project.
+
+- [x] Task 14.1: `sinfo_parser` Module
+
+  - New module with `PartitionStats`, `NodeStats`, `ClusterCapacity` dataclasses.
+  - Two `sinfo` calls (`-h -o "%R|%D|%C|%G|%m|%a"` and `-h -N -o "%N|%R|%T|%C|%e|%m|%G|%E"`) parsed and stitched into a single capacity snapshot.
+  - State suffix stripping (`mixed*`, `idle~`, …) and GRES parsing covering `(null)`, `gpu:4`, `gpu:l40s:4`, and `gpu:a100:8(IDX:0-7)`.
+  - Verification: 37 unit tests in `test_sinfo_parser.py`.
+
+- [x] Task 14.2: `ClusterDashboardScreen` Widget
+
+  - Full-screen `Screen` (not `ModalScreen`) modelled on `JobDetailScreen`.
+  - Capacity block with three colored bars (CPU/GPU/Memory) plus a "12 up · 1 down · 0 drain" footer line.
+  - Partition `DataTable` and per-node `DataTable` populated from the cached `ProfileTab` data.
+  - `set_interval(60s)` auto-refresh; `r` triggers an immediate fetch; `j`/`k`/`g`/`G` scroll the body; `Esc`/`q` returns.
+  - Shared `_render_bar` helper extracted to `widgets/_bars.py` and reused from the job detail screen.
+
+- [x] Task 14.3: App Integration
+
+  - `d` binding on the main app pushes the dashboard for the active profile, seeding it from `ProfileTab` cached data so re-opening is instant.
+  - `_fetch_jobs` now runs `fetch_sinfo` opportunistically (cached ~60 s) alongside the existing squeue/sacct/queue-stats path. Failures are non-critical.
+  - `FetchResult` extended with `cluster_capacity`, `partitions`, `nodes`, `sinfo_fetched`.
+  - Verification: 6 dashboard pilot tests and updates to `test_app.py`; 343 tests pass at this milestone.
+
+## 🧙 Epic 15: First-Run Setup Wizard
+
+Goal: Replace the silent "empty default profile" fallback with an interactive Textual modal so newcomers can connect on the first launch.
+
+- [x] Task 15.1: `ConfigLoader.locate`
+
+  - Returns `(path, found)` without falling back to the empty default profile. Keeps the existing `load()` fallback for tests and edge cases.
+  - Used by `cli.main` to decide whether to launch the wizard.
+
+- [x] Task 15.2: `FirstRunWizardScreen` Modal
+
+  - `ModalScreen[Optional[ProfileConfig]]` with inputs for profile name, host, username, port, key path, and log pattern. Defaults: ed25519 key if it exists, `getpass.getuser()` username, log pattern `{work_dir}/logs/{job_id}.out`.
+  - Three buttons: `Test connection` (worker thread + `SSHClient.check_connection`), `Save and continue`, `Cancel`. Validation errors (missing host, non-numeric port) appear in an inline status line; the modal stays open until the user fixes them or cancels.
+  - Companion `ConfirmScreen` (`y`/`n`/`Esc`) for the "Add another cluster?" loop.
+
+- [x] Task 15.3: CLI Orchestration
+
+  - `run_first_run_wizard(save_path)` runs a tiny `WizardApp` that loops the wizard + confirm screens, then persists the collected profiles via `ConfigLoader.save_toml`.
+  - `cli.main` invokes the wizard when `locate` reports `found=False` and `--config`/`--host` were not supplied. Cancellation exits 1 with a friendly message.
+  - Verification: 16 wizard tests + 7 CLI tests; 352 tests pass overall.

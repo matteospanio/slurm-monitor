@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cluster dashboard screen** (`d` key). Full-screen view with cluster-wide CPU/GPU/memory bars, a partition summary table (nodes idle/mixed/alloc/down, CPUs free/total, GPUs used/total, memory total, up/down state), and a scrollable per-node table (state, CPU allocation, free/total memory, GPU usage, reason). Refreshes via `sinfo` every 60 s in the background and on demand with `r`. Supports `j`/`k`/`g`/`G` for scrolling and `Esc`/`q` to return.
+- **First-run setup wizard**. When no config file exists under the default search path, an interactive `ModalScreen` collects profile name, SSH host, username, port, key path, and log pattern, optionally tests the connection via `SSHClient.check_connection`, and writes `~/.config/slurm_monitor/config.toml` via `ConfigLoader.save_toml`. Includes an "Add another cluster?" confirmation so multiple profiles can be set up in one session. Passing `--config` or `--host` skips the wizard.
+- `ConfigLoader.locate()` — returns `(path, found)` for the resolved config path without touching the silent default-profile fallback. Lets the CLI decide whether to launch the wizard.
+- `sinfo_parser` module with `PartitionStats`, `NodeStats`, `ClusterCapacity` dataclasses and a `fetch_sinfo(client)` helper that issues two pipe-delimited `sinfo` calls and stitches the results.
+- Shared `widgets/_bars.py` rendering helper (extracted from the job detail screen) reused by the dashboard.
+- 66 new tests across `test_sinfo_parser.py`, `test_cluster_dashboard.py`, `test_first_run_wizard.py`, and `test_cli.py` (352 total).
+
 ### Fixed
 
 - **`g`/`G` navigation now moves the cursor** to the first/last row of the job table. Previous binding was wrong on two counts: (1) it called `scroll_home`/`scroll_end`, which only adjust horizontal scroll for row-cursor `DataTable`s, and (2) it listed the key as `shift+g`, but xterm-style terminals deliver Shift+G as the literal character `G` (no modifier in the key event). Bindings now use `scroll_top`/`scroll_bottom` and accept both `G` and `shift+g` so they work in real terminals and the Textual test pilot. The same key-form fix was applied to `JobDetailScreen` and `LogScreen`.

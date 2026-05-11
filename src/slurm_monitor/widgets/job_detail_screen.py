@@ -12,33 +12,8 @@ from textual.widgets import Footer, Static
 from slurm_monitor.scontrol_parser import JobDetails, fetch_job_details
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import SSHClient
+from slurm_monitor.widgets._bars import render_bar as _render_bar
 from slurm_monitor.widgets.log_viewer import LogScreen
-
-# Bar characters for percentage rendering
-_BAR_FILLED = "\u2588"
-_BAR_EMPTY = "\u2591"
-_BAR_WIDTH = 20
-
-
-def _render_bar(percentage: float) -> Text:
-    """Render a colored percentage bar."""
-    pct = max(0.0, min(100.0, percentage))
-    filled = round(_BAR_WIDTH * pct / 100)
-    empty = _BAR_WIDTH - filled
-
-    if pct >= 90:
-        color = "red"
-    elif pct >= 70:
-        color = "yellow"
-    else:
-        color = "green"
-
-    bar = Text()
-    bar.append(_BAR_FILLED * filled, style=color)
-    bar.append(_BAR_EMPTY * empty, style="dim")
-    bar.append(f" {pct:.1f}%")
-    return bar
-
 
 _SEPARATOR = "\u2500" * 40
 
