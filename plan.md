@@ -390,6 +390,13 @@ Goal: Make the navigation match vim conventions across the whole interface.
   - Added `test_shift_plus_g_alias_also_works` alongside the existing `test_shift_g_moves_cursor_to_last_row` (now pressing the literal `G`).
   - Verification: 284 tests pass.
 
+- [x] Task 13.3: Seed `JobDetail` Panel from Cursor on Render
+
+  - `DataTable` doesn't fire `CursorMoved` for its initial row-0 placement, so the bottom detail panel sat on its default "No job selected" text until the user pressed j/k.
+  - `_update_display` now reads `table.cursor_row` and calls `detail.set_job(...)` directly so the panel reflects the selected row on first paint, after a refresh, and after a tab switch.
+  - `JobDetail.set_job` gained a `has_jobs` flag so the empty-list case renders "No jobs to display" instead of "No job selected".
+  - Verification: 286 tests pass (2 new pilot tests).
+
 - [x] Task 13.2: Add `h`/`l` Tab Switching
 
   - New `action_previous_tab` / `action_next_tab` bound to `h` / `l`, cycling through profile tabs with wrap-around.

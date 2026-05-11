@@ -390,6 +390,24 @@ class SlurmMonitorApp(App):
             table = self.query_one(f"#table-{profile_name}", JobTable)
             table.update_jobs(filtered)
         except Exception:
+            table = None
+
+        # Sync the detail panel with whatever row the table cursor lands
+        # on. DataTable doesn't emit a CursorMoved event for the initial
+        # row-0 placement, so without this the panel would stay on "No
+        # job selected" until the user pressed j/k.
+        try:
+            detail = self.query_one(f"#detail-{profile_name}", JobDetail)
+            if (
+                table is not None
+                and filtered
+                and table.cursor_row is not None
+                and 0 <= table.cursor_row < len(filtered)
+            ):
+                detail.set_job(filtered[table.cursor_row], has_jobs=True)
+            else:
+                detail.set_job(None, has_jobs=bool(filtered))
+        except Exception:
             pass
 
         try:
@@ -429,10 +447,9 @@ class SlurmMonitorApp(App):
             return
 
         if table.cursor_row is not None and 0 <= table.cursor_row < len(filtered):
-            job = filtered[table.cursor_row]
-            detail.set_job(job)
+            detail.set_job(filtered[table.cursor_row], has_jobs=True)
         else:
-            detail.set_job(None)
+            detail.set_job(None, has_jobs=bool(filtered))
 
     def on_tabbed_content_tab_activated(self, event) -> None:
         """Refresh display when switching tabs."""

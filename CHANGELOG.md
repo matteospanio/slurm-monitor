@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`g`/`G` navigation now moves the cursor** to the first/last row of the job table. Previous binding was wrong on two counts: (1) it called `scroll_home`/`scroll_end`, which only adjust horizontal scroll for row-cursor `DataTable`s, and (2) it listed the key as `shift+g`, but xterm-style terminals deliver Shift+G as the literal character `G` (no modifier in the key event). Bindings now use `scroll_top`/`scroll_bottom` and accept both `G` and `shift+g` so they work in real terminals and the Textual test pilot. The same key-form fix was applied to `JobDetailScreen` and `LogScreen`.
+- **Bottom detail panel no longer stuck on "No job selected"**: `JobDetail` is now seeded from the current cursor row inside `_update_display`. `DataTable` does not emit a `CursorMoved` event for its initial row-0 placement, so previously the panel stayed on its default text until the user pressed j/k. The empty-list case now reads "No jobs to display" instead of "No job selected".
 
 ### Added
 

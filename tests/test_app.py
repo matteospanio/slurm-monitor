@@ -8,6 +8,7 @@ from slurm_monitor.app import FetchResult, ProfileTab, SlurmMonitorApp
 from slurm_monitor.config import AppConfig, ProfileConfig, SSHConfig, LogConfig
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import SSHConnectionError, SSHTimeoutError
+from slurm_monitor.widgets.job_detail import JobDetail
 from slurm_monitor.widgets.job_table import JobTable
 
 
@@ -215,6 +216,37 @@ class TestVimNavigation:
 
             await pilot.press("h")
             assert app._get_active_profile_name() == "alpha"
+
+    @pytest.mark.asyncio
+    async def test_detail_panel_populated_on_initial_render(self):
+        """Detail panel should show the row-0 job even without cursor move."""
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [_make_job("42", name="alpha"), _make_job("43")]
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            detail = app.query_one("#detail-clusterA", JobDetail)
+            # The widget renders Rich Text — check internal state instead.
+            assert detail._job is not None
+            assert detail._job.job_id == "42"
+
+    @pytest.mark.asyncio
+    async def test_detail_panel_shows_empty_message_when_no_jobs(self):
+        """With no jobs, the panel should reflect that, not 'No job selected'."""
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = []
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            detail = app.query_one("#detail-clusterA", JobDetail)
+            assert detail._job is None
+            assert detail._has_jobs is False
+            rendered = str(detail.render())
+            assert "No jobs to display" in rendered
 
     @pytest.mark.asyncio
     async def test_h_l_no_op_with_single_profile(self):

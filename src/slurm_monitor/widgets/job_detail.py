@@ -14,17 +14,28 @@ class JobDetail(Static):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._job: Optional[SlurmJob] = None
+        self._has_jobs: bool = False
 
-    def set_job(self, job: Optional[SlurmJob]) -> None:
-        """Update the displayed job."""
+    def set_job(self, job: Optional[SlurmJob], has_jobs: bool = True) -> None:
+        """Update the displayed job.
+
+        Args:
+            job: The selected job, or None if nothing is selected.
+            has_jobs: Whether the job list has any entries at all. Used to
+                distinguish "no jobs to show" from "cursor not on a row".
+        """
         self._job = job
+        self._has_jobs = has_jobs
         self.refresh()
 
     def render(self) -> Text:
         text = Text()
 
         if self._job is None:
-            text.append("No job selected", style="dim")
+            if self._has_jobs:
+                text.append("No job selected", style="dim")
+            else:
+                text.append("No jobs to display", style="dim italic")
             return text
 
         job = self._job
