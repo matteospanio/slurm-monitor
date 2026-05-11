@@ -86,7 +86,10 @@ class SlurmMonitorApp(App):
         ("j", "cursor_down", "Down"),
         ("k", "cursor_up", "Up"),
         ("g", "scroll_top", "Top"),
-        ("shift+g", "scroll_bottom", "Bottom"),
+        # Terminals send a literal "G" for Shift+G (no modifier in the key
+        # event) — bind both forms so it works in real terminals and the
+        # Textual test pilot, which synthesizes "shift+g" directly.
+        ("G,shift+g", "scroll_bottom", "Bottom"),
         ("h", "previous_tab", "Prev tab"),
         ("l", "next_tab", "Next tab"),
         ("enter", "view_job", "Details"),  # fallback when table not focused

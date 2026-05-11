@@ -123,6 +123,8 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_shift_g_moves_cursor_to_last_row(self):
+        """Real terminals deliver Shift+G as the literal "G" key — the
+        binding must match that form, not just "shift+g"."""
         app = SlurmMonitorApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
@@ -134,6 +136,23 @@ class TestVimNavigation:
             table.move_cursor(row=0)
             assert table.cursor_row == 0
 
+            # Press the literal "G" — what the xterm parser produces for
+            # Shift+G on a real terminal.
+            await pilot.press("G")
+            assert table.cursor_row == 4
+
+    @pytest.mark.asyncio
+    async def test_shift_plus_g_alias_also_works(self):
+        """The synthetic "shift+g" form should also map to scroll_bottom."""
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [_make_job(str(i)) for i in range(5)]
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            table = app.query_one("#table-clusterA", JobTable)
+            table.move_cursor(row=0)
             await pilot.press("shift+g")
             assert table.cursor_row == 4
 
@@ -163,7 +182,7 @@ class TestVimNavigation:
         app = SlurmMonitorApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             await pilot.press("g")
-            await pilot.press("shift+g")
+            await pilot.press("G")
 
     @pytest.mark.asyncio
     async def test_l_switches_to_next_tab(self):

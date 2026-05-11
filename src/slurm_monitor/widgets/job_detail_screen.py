@@ -62,7 +62,7 @@ class JobDetailScreen(Screen):
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
         Binding("g", "scroll_home", "Top", show=False),
-        Binding("shift+g", "scroll_end", "Bottom", show=False),
+        Binding("G,shift+g", "scroll_end", "Bottom", show=False),
     ]
 
     CSS = """

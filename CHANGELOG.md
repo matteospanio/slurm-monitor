@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`g`/`G` navigation now moves the cursor** to the first/last row of the job table. Previously bound to `scroll_home`/`scroll_end`, which only adjust horizontal scroll for row-cursor `DataTable`s and produced no visible effect.
+- **`g`/`G` navigation now moves the cursor** to the first/last row of the job table. Previous binding was wrong on two counts: (1) it called `scroll_home`/`scroll_end`, which only adjust horizontal scroll for row-cursor `DataTable`s, and (2) it listed the key as `shift+g`, but xterm-style terminals deliver Shift+G as the literal character `G` (no modifier in the key event). Bindings now use `scroll_top`/`scroll_bottom` and accept both `G` and `shift+g` so they work in real terminals and the Textual test pilot. The same key-form fix was applied to `JobDetailScreen` and `LogScreen`.
 
 ### Added
 

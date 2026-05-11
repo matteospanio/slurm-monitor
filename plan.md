@@ -383,6 +383,13 @@ Goal: Make the navigation match vim conventions across the whole interface.
   - Switched the `g`/`G` bindings to `action_scroll_top`/`action_scroll_bottom`, the cursor-moving variants.
   - Verification: New `test_g_moves_cursor_to_first_row` and `test_shift_g_moves_cursor_to_last_row` pilot tests pass.
 
+- [x] Task 13.1b: Bind `G` Directly (Not Just `shift+g`)
+
+  - Real terminals send the literal character `G` for Shift+G (xterm parser only produces a `shift+letter` form when alt is also held — see `_xterm_parser.py`). The original `shift+g` binding never fired in actual use.
+  - Bindings now use the form `"G,shift+g"` so they match both the terminal-delivered `G` and the synthetic event Textual's test pilot generates. Applied to `app.py`, `JobDetailScreen`, and `LogScreen`.
+  - Added `test_shift_plus_g_alias_also_works` alongside the existing `test_shift_g_moves_cursor_to_last_row` (now pressing the literal `G`).
+  - Verification: 284 tests pass.
+
 - [x] Task 13.2: Add `h`/`l` Tab Switching
 
   - New `action_previous_tab` / `action_next_tab` bound to `h` / `l`, cycling through profile tabs with wrap-around.
