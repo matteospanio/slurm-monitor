@@ -1,234 +1,113 @@
-# Slurm TUI Monitor
+# slurm-monitor
 
-A terminal-based user interface (TUI) application for monitoring and displaying Slurm job statuses in real-time.
+[![Docs](https://github.com/matteospanio/slurm-monitor/actions/workflows/docs.yml/badge.svg)](https://matteospanio.github.io/slurm-monitor/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
+[![Built with Textual](https://img.shields.io/badge/built%20with-Textual-5546ff.svg)](https://textual.textualize.io/)
+
+A keyboard-driven terminal UI for monitoring [Slurm](https://slurm.schedmd.com/) jobs
+in real time over SSH. It runs the standard Slurm command-line tools
+(`squeue`, `sacct`, `scontrol`, `sinfo`, `sstat`, `nvidia-smi`, `scancel`) against one
+or more clusters, parses the output, and presents the result as a rich dashboard
+built with [Textual](https://textual.textualize.io/).
+
+![main job table](docs/_static/screenshots/01_main_job_table.svg)
 
 ## Features
 
-- Real-time monitoring of Slurm jobs with automatic refresh
-- Color-coded job states (RUNNING, PENDING, COMPLETED, FAILED, etc.)
-- Multi-profile support for monitoring multiple clusters
-- SSH-based remote command execution via paramiko with connection reuse
-- Flexible configuration via TOML files (JSON backward compatible)
-- GPU allocation column showing allocated GPUs per job
-- In-TUI log viewer streaming stdout/stderr via paramiko channels
-- Detailed job view with scontrol stats: time/memory progress bars, GPU utilization, resource usage
-- Interactive filtering by state and name search
-- Column sorting (id, time, name, state)
-- Vim-style keyboard navigation throughout
+- **Real-time job table** — active jobs from `squeue` merged with recent history from
+  `sacct`, color-coded by state.
+- **Per-job detail screen** — `scontrol` stats with time / memory / per-GPU
+  utilisation bars; one keystroke to the stdout, stderr, or submitted batch script.
+- **Cluster dashboard** — cluster-wide CPU / GPU / memory bars, partition summary,
+  per-node table fed by `sinfo`.
+- **Multi-cluster tabs** — configure several clusters and switch with `h` / `l`;
+  filter, search, and sort state is remembered per tab.
+- **Vim-style navigation** throughout.
+- **OSC 52 yank** — copy job IDs, paths, and log lines to the system clipboard
+  through SSH, no `xclip` / `pbcopy` required.
+- **First-run wizard** that writes a working TOML config and tests the SSH
+  connection.
+- **Demo mode** (`--demo`) — exercise the entire TUI against built-in fixture data,
+  no cluster needed.
 
-## Usage
+## Installation
+
+`slurm-monitor` is built with [uv](https://github.com/astral-sh/uv). It requires
+Python ≥ 3.12 and an OpenSSH client.
 
 ```bash
-# Using uv
-uv run slurm-monitor
+# Install uv (one-time)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# With a specific profile
-uv run slurm-monitor --profile dei
+# Install slurm-monitor as a CLI tool
+uv tool install git+https://github.com/matteospanio/slurm-monitor.git
 
-# List configured profiles
-uv run slurm-monitor --list-profiles
-
-# Or after installation
+# Run
 slurm-monitor
 ```
 
-### Keyboard Shortcuts
+Or clone and run from source:
 
-#### Main screen (job list)
-
-| Key | Action |
-|-----|--------|
-| `q` | Quit application |
-| `r` | Manually refresh job data |
-| `?` | Open the help cheatsheet |
-| `j`/`k` | Navigate down/up (Vim-style) |
-| `g`/`G` | Jump to top/bottom of list |
-| `h`/`l` | Switch to previous/next profile tab |
-| `Enter` | Open job detail screen |
-| `d` | Open the cluster dashboard (capacity, partitions, nodes) |
-| `D` | Toggle the bottom job-detail panel |
-| `/` | Search jobs by name (Esc to clear, Enter to confirm) |
-| `1`-`4` | Filter by state (Running/Pending/Completed/Failed) |
-| `0` | Show all jobs |
-| `s` | Cycle sort mode (id/time/name/state) |
-| `y` | Copy the selected job ID to the system clipboard (OSC 52) |
-| `c` | Cancel (`scancel`) the selected job — confirmation required |
-| `Esc` | Go back / close screen |
-
-#### Job detail screen
-
-| Key | Action |
-|-----|--------|
-| `o` / `e` | Open the stdout / stderr log viewer |
-| `v` | Show the submitted batch script (read-only) |
-| `c` | Cancel this job — confirmation required |
-| `y` | Cycle copy targets: job ID → stdout → stderr → work dir |
-| `?` | Help |
-| `j`/`k`/`g`/`G` | Scroll the detail body |
-| `Esc` / `q` | Back to the job list |
-
-#### Log viewer
-
-| Key | Action |
-|-----|--------|
-| `f` | Toggle follow / pause auto-scroll |
-| `/` | Search the log buffer (case-insensitive) |
-| `n` / `N` | Jump to next / previous match |
-| `w` | Save the buffer to a local file |
-| `y` | Copy the current match line to the clipboard |
-| `?` | Help |
-| `j`/`k`/`g`/`G` | Scroll |
-| `Esc` / `q` | Back |
-
-#### Cluster dashboard
-
-| Key | Action |
-|-----|--------|
-| `r` | Refresh sinfo now |
-| `?` | Help |
-| `j`/`k`/`g`/`G` | Scroll |
-| `Esc` / `q` | Back |
-
-OSC 52 clipboard support depends on the terminal: works in iTerm2, WezTerm, kitty, Alacritty, and tmux configured with `set-clipboard on`.
-
-### Navigation Flow
-
-1. **Job table** - Browse all jobs, filter and sort
-2. **Job detail screen** (`Enter`) - View scontrol stats: time/memory bars, GPU utilization, resources, schedule, log paths
-3. **Log viewer** (`o`/`e`) - Stream stdout or stderr with follow mode
-4. **Cluster dashboard** (`d`) - Cluster-wide CPU/GPU/memory bars, partition summary, and a per-node table (auto-refreshes every 60s)
-
-### First-run setup
-
-On the first launch, if no config file is found under `~/.config/slurm_monitor/` or the working directory, an interactive wizard collects host/username/key/log-pattern, optionally tests the SSH connection, and writes `~/.config/slurm_monitor/config.toml`. You can chain "Add another cluster?" to set up multiple profiles in one go. Pass `--config` or `--host` to skip the wizard entirely.
-
-### Configuration
-
-Create a config file at `~/.config/slurm_monitor/config.toml`:
-
-```toml
-[defaults]
-ssh_timeout = 10
-refresh_interval = 5
-sacct_refresh_interval = 60
-
-[defaults.log]
-default_pattern = "{work_dir}/logs/out/{job_id}.txt"
-view_command = "tail -f {log_path}"
-
-[profiles.dei]
-host = "dei"
+```bash
+git clone https://github.com/matteospanio/slurm-monitor.git
+cd slurm-monitor
+uv sync
+uv run slurm-monitor
 ```
 
-For hosts defined in `~/.ssh/config`, the app automatically resolves hostnames, usernames, ports, identity files, and proxy commands.
-
-For a complete walkthrough of installation, SSH setup, configuration, and all
-features, see the [documentation site](https://matteospanio.github.io/slurm-monitor/).
-The Sphinx sources live under `docs/`; build them locally with
-`uv sync --group docs && uv run sphinx-build -b html docs docs/_build/html`.
-
-You can also try the app against built-in fixture data — no SSH needed:
+Try it without a Slurm cluster:
 
 ```bash
 slurm-monitor --demo
 ```
 
-## Installation
+## Quick start
 
-This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
+1. Run `slurm-monitor`. If no config exists at `~/.config/slurm_monitor/config.toml`,
+   the **first-run wizard** walks you through creating one.
+2. Set up passwordless SSH to your cluster — `ssh-copy-id` your key and add a
+   `Host` alias in `~/.ssh/config`.
+3. Reference the alias in your config:
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd slurm_monitor
+   ```toml
+   [profiles.mycluster]
+   host = "mycluster"
+   ```
 
-# Install dependencies
-uv sync
+Full SSH and configuration walkthrough:
+[docs site → Getting started](https://matteospanio.github.io/slurm-monitor/getting-started/installation.html).
 
-# Run tests
-uv run pytest
-```
+## Documentation
 
-## SSH Setup
+The full documentation lives at
+**[matteospanio.github.io/slurm-monitor](https://matteospanio.github.io/slurm-monitor/)**.
 
-For seamless operation, you need passwordless SSH access to your Slurm cluster.
+- [Getting started](https://matteospanio.github.io/slurm-monitor/getting-started/installation.html) — installation, quickstart, SSH setup
+- [Configuration](https://matteospanio.github.io/slurm-monitor/configuration/overview.html) — TOML schema, profiles, log paths, worked examples
+- [Usage guides](https://matteospanio.github.io/slurm-monitor/usage/job-table.html) — job table, detail screen, log viewer, cluster dashboard, batch script, scancel
+- [Reference](https://matteospanio.github.io/slurm-monitor/reference/keybindings.html) — keybindings, info sources, troubleshooting
+- [Changelog](CHANGELOG.md) — release notes
 
-### 1. Generate SSH Key (if you don't have one)
-
-```bash
-ssh-keygen -t ed25519 -C "your_email@example.com"
-```
-
-### 2. Copy Your Public Key to the Cluster
-
-```bash
-ssh-copy-id your-username@your-cluster.edu
-```
-
-### 3. Configure SSH (Optional but Recommended)
-
-Create or edit `~/.ssh/config` to simplify connections:
-
-```ssh-config
-Host slurm-cluster
-    HostName your-cluster.edu
-    User your-username
-    IdentityFile ~/.ssh/id_ed25519
-
-    # ControlMaster for faster connections (optional optimization)
-    ControlMaster auto
-    ControlPath ~/.ssh/control-%r@%h:%p
-    ControlPersist 10m
-```
-
-Then reference the alias in your TOML config:
-
-```toml
-[profiles.cluster]
-host = "slurm-cluster"
-```
-
-### 4. Verify Setup
+Sphinx sources are under [`docs/`](docs/). Build locally with:
 
 ```bash
-# Should connect without password
-ssh slurm-cluster 'squeue --me'
+uv sync --group docs
+uv run sphinx-build -b html docs docs/_build/html
 ```
 
 ## Development
 
-### Running Tests
-
 ```bash
-uv run pytest
+uv sync --group dev
+uv run pytest                       # run the test suite (417 tests)
+pre-commit install                  # enable code-quality hooks
+uv run python docs/scripts/generate_screenshots.py  # regenerate docs SVGs
 ```
 
-### Code Quality
-
-This project uses pre-commit hooks for code quality:
-
-```bash
-pre-commit install
-pre-commit run --all-files
-```
-
-## Requirements
-
-- Python >= 3.12
-- SSH client installed and configured
-- Access to a Slurm cluster
-
-## Development Status
-
-`slurm-monitor` is now in its first official release (`1.0.0`). See
-[CHANGELOG.md](CHANGELOG.md) for release notes and the
-[documentation site](https://matteospanio.github.io/slurm-monitor/) for
-user-facing docs.
+See [CLAUDE.md](CLAUDE.md) for project context and development notes.
 
 ## License
 
-TBD
-
-## Contributing
-
-See [CLAUDE.md](CLAUDE.md) for development guidelines and project context.
+[GPL-3.0](LICENSE) © Matteo Spanio
