@@ -2,10 +2,14 @@ This repository is for a terminal-based user interface (TUI) application designe
 
 ## Context
 
-Before taking actions read the plan.md file for context and instructions. Look for the latest updates there. After implementing any code changes, ensure to update the plan.md file with progress or completion status, create a git commit (use pre-commit hooks if available), and update the CHANGELOG and the README when needed.
+Before taking actions, skim `CHANGELOG.md` for the latest release notes and the Sphinx documentation under `docs/` for user-facing behavior. After implementing code changes, update `CHANGELOG.md` (and `README.md` when the public surface changes), then create a git commit (pre-commit hooks will run automatically).
 
-When you add new features create a new test to verify the feature works as intended. Tests should be located in the tests/ directory.
+When you add new features, create a new test under `tests/` to verify the feature works as intended.
 
 ## Tools
 
-Use uv for running the application, pytest for testing, and pre-commit hooks for code quality.
+Use `uv` for running the application, `pytest` for the test suite, `pre-commit` for code quality, and `sphinx-build` (via `uv sync --group docs`) for building the documentation site locally.
+
+## Demo mode
+
+`uv run slurm-monitor --demo` launches the app against a built-in fixture dataset (no SSH needed). Useful for screenshots, demos, and reproducing UI bugs without a live cluster. Screenshot generation for the docs lives at `docs/scripts/generate_screenshots.py`.

@@ -106,14 +106,38 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     default=False,
     help="List available profiles and exit.",
 )
+@click.option(
+    "--demo",
+    is_flag=True,
+    default=False,
+    help="Launch with built-in fixture data (no SSH connection). "
+    "Useful for demos, tutorials, and generating documentation screenshots.",
+)
 def main(
     config_path: Optional[Path],
     profile_name: Optional[str],
     host: Optional[str],
     list_profiles: bool,
+    demo: bool,
 ) -> None:
     """Slurm Monitor - TUI application for monitoring Slurm jobs."""
     from slurm_monitor.app import SlurmMonitorApp
+
+    # Demo mode: synthesize a single-profile config pointing at the
+    # built-in fixture host and skip SSH/wizard entirely.
+    if demo:
+        from slurm_monitor.config import ProfileConfig as _ProfileConfig
+        from slurm_monitor.config import SSHConfig
+        from slurm_monitor.demo_data import DEMO_HOST, DEMO_USERNAME
+
+        profile = _ProfileConfig(
+            name="demo",
+            ssh=SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME),
+        )
+        app_config = AppConfig(profiles={"demo": profile})
+        app = SlurmMonitorApp(app_config, demo=True)
+        app.run()
+        return
 
     # When the user supplied --host or --config, skip the wizard entirely:
     # they are explicitly telling us how to connect.

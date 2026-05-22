@@ -31,6 +31,7 @@ from slurm_monitor.sinfo_parser import (
 )
 from slurm_monitor.squeue_parser import SlurmJob
 from slurm_monitor.ssh_wrapper import (
+    DemoSSHClient,
     SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,
@@ -70,9 +71,11 @@ class FetchResult:
 class ProfileTab:
     """Manages state for a single profile/cluster tab."""
 
-    def __init__(self, profile: ProfileConfig):
+    def __init__(self, profile: ProfileConfig, demo: bool = False):
         self.profile = profile
-        self.ssh_client = SSHClient(profile.ssh)
+        self.ssh_client: SSHClient = (
+            DemoSSHClient(profile.ssh) if demo else SSHClient(profile.ssh)
+        )
         self.aggregator = JobAggregator(self.ssh_client, timeout=profile.ssh_timeout)
         self.path_resolver = LogPathResolver(profile.log)
         self.jobs: list[SlurmJob] = []
@@ -138,13 +141,14 @@ class SlurmMonitorApp(App):
         ("c", "cancel_job", "scancel"),
     ]
 
-    def __init__(self, config: Optional[AppConfig] = None):
+    def __init__(self, config: Optional[AppConfig] = None, demo: bool = False):
         super().__init__()
         self.config = config or ConfigLoader.load()
+        self.demo = demo
         self._profile_tabs: dict[str, ProfileTab] = {}
 
         for name, profile in self.config.profiles.items():
-            self._profile_tabs[name] = ProfileTab(profile)
+            self._profile_tabs[name] = ProfileTab(profile, demo=demo)
 
     def compose(self) -> ComposeResult:
         yield Header()

@@ -122,7 +122,16 @@ host = "dei"
 
 For hosts defined in `~/.ssh/config`, the app automatically resolves hostnames, usernames, ports, identity files, and proxy commands.
 
-For more configuration examples and use cases, see [Configuration Examples](docs/configuration-examples.md).
+For a complete walkthrough of installation, SSH setup, configuration, and all
+features, see the [documentation site](https://matteospanio.github.io/slurm-monitor/).
+The Sphinx sources live under `docs/`; build them locally with
+`uv sync --group docs && uv run sphinx-build -b html docs docs/_build/html`.
+
+You can also try the app against built-in fixture data — no SSH needed:
+
+```bash
+slurm-monitor --demo
+```
 
 ## Installation
 
@@ -211,7 +220,10 @@ pre-commit run --all-files
 
 ## Development Status
 
-This project is in active development. See [plan.md](plan.md) for the full development roadmap.
+`slurm-monitor` is now in its first official release (`1.0.0`). See
+[CHANGELOG.md](CHANGELOG.md) for release notes and the
+[documentation site](https://matteospanio.github.io/slurm-monitor/) for
+user-facing docs.
 
 ## License
 

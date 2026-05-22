@@ -40,36 +40,23 @@ class TestLogScreen:
         )
         assert screen.tail_lines == 100
 
-    def test_close_cleans_up_channel(self, mock_job, mock_ssh_client):
+    def test_close_signals_stream_to_stop(self, mock_job, mock_ssh_client):
         screen = LogScreen(mock_job, "/path/to/log.out", mock_ssh_client)
-        mock_channel = MagicMock()
-        screen._channel = mock_channel
+        assert screen._stop_stream is False
 
         with patch.object(type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())):
             screen.action_close()
 
-        mock_channel.close.assert_called_once()
-        assert screen._channel is None
+        assert screen._stop_stream is True
 
-    def test_close_without_channel(self, mock_job, mock_ssh_client):
+    def test_close_is_idempotent(self, mock_job, mock_ssh_client):
         screen = LogScreen(mock_job, "/path/to/log.out", mock_ssh_client)
-        assert screen._channel is None
 
         with patch.object(type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())):
             screen.action_close()
-
-        assert screen._channel is None
-
-    def test_close_handles_channel_error(self, mock_job, mock_ssh_client):
-        screen = LogScreen(mock_job, "/path/to/log.out", mock_ssh_client)
-        mock_channel = MagicMock()
-        mock_channel.close.side_effect = Exception("already closed")
-        screen._channel = mock_channel
-
-        with patch.object(type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())):
             screen.action_close()
 
-        assert screen._channel is None
+        assert screen._stop_stream is True
 
 
 class TestFindMatchIndices:

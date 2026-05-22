@@ -2,7 +2,8 @@
 
 import os
 import socket
-from typing import Optional
+import time
+from typing import Callable, Optional
 
 import paramiko
 
@@ -267,6 +268,49 @@ class SSHClient:
                 f"SSH command to {self.config.host} failed: {e}"
             ) from e
 
+    def stream_command(
+        self,
+        command: str,
+        on_line: Callable[[str], None],
+        should_stop: Callable[[], bool] = lambda: False,
+        timeout: int = 10,
+        poll_interval: float = 0.1,
+    ) -> None:
+        """Run a long-running command on the remote host and stream its output.
+
+        ``on_line`` is called once per newline-terminated chunk read from
+        stdout. ``should_stop`` is polled between reads so the caller can
+        request early termination (e.g. screen closing). The method blocks
+        until the channel closes, ``should_stop`` returns ``True``, or an
+        error occurs.
+        """
+        self.connect(timeout)
+        transport = self._client.get_transport()
+        channel = transport.open_session()
+        try:
+            channel.exec_command(command)
+            buf = b""
+            while not channel.exit_status_ready():
+                if should_stop():
+                    break
+                if channel.recv_ready():
+                    data = channel.recv(4096)
+                    if not data:
+                        break
+                    buf += data
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        on_line(line.decode("utf-8", errors="replace"))
+                else:
+                    time.sleep(poll_interval)
+            if buf:
+                on_line(buf.decode("utf-8", errors="replace"))
+        finally:
+            try:
+                channel.close()
+            except Exception:
+                pass
+
     def check_connection(self, timeout: int = 10) -> bool:
         """Check if SSH connection to host is working.
 
@@ -313,3 +357,133 @@ class SSHClient:
 
     def __exit__(self, *args) -> None:
         self.close()
+
+
+class DemoSSHClient(SSHClient):
+    """Drop-in SSHClient replacement backed by static fixture data.
+
+    Used by the ``--demo`` CLI flag so the TUI can be exercised (and the
+    documentation screenshots regenerated) without a live Slurm cluster.
+    Every command the app issues is matched by prefix and answered from
+    :mod:`slurm_monitor.demo_data`.
+    """
+
+    def __init__(self, config: Optional[SSHConfig] = None):
+        if config is None:
+            from slurm_monitor.demo_data import DEMO_HOST, DEMO_USERNAME
+            config = SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME)
+        super().__init__(config)
+
+    def connect(self, timeout: int = 10) -> None:  # noqa: D401 — interface compat
+        # No real connection is made in demo mode.
+        return None
+
+    def close(self) -> None:
+        return None
+
+    def set_credentials(
+        self,
+        password: Optional[str] = None,
+        passphrase: Optional[str] = None,
+    ) -> None:
+        # Credentials are irrelevant in demo mode.
+        return None
+
+    def check_connection(self, timeout: int = 10) -> bool:
+        return True
+
+    def execute(self, command: str, timeout: int = 10) -> str:
+        from slurm_monitor import demo_data
+
+        cmd = command.strip()
+
+        # squeue --me with format string (active jobs)
+        if cmd.startswith("squeue --me -o "):
+            return demo_data.SQUEUE_OUTPUT
+
+        # squeue --me -t PENDING -o "..." (pending details)
+        if cmd.startswith("squeue --me -t PENDING"):
+            return demo_data.SQUEUE_PENDING_DETAILS
+
+        # squeue -t PENDING ... --sort=-Q (queue ranks)
+        if cmd.startswith("squeue -t PENDING"):
+            return demo_data.SQUEUE_QUEUE_RANKS
+
+        # squeue --noheader -o "%T" (cluster-wide state counts)
+        if cmd.startswith('squeue --noheader -o "%T"'):
+            return demo_data.SQUEUE_CLUSTER_STATES
+
+        # sacct historical jobs
+        if cmd.startswith("sacct "):
+            return demo_data.SACCT_OUTPUT
+
+        # sinfo per-node (-N flag)
+        if cmd.startswith("sinfo ") and " -N " in cmd:
+            return demo_data.SINFO_NODES
+
+        # sinfo per-partition
+        if cmd.startswith("sinfo "):
+            return demo_data.SINFO_PARTITIONS
+
+        # scontrol show job <id>
+        if cmd.startswith("scontrol show job "):
+            job_id = cmd.split()[-1].strip()
+            return demo_data.SCONTROL_JOBS.get(job_id, "")
+
+        # scontrol write batch_script <id> -
+        if cmd.startswith("scontrol write batch_script "):
+            parts = cmd.split()
+            if len(parts) >= 4:
+                return demo_data.get_batch_script(parts[3])
+            return demo_data.DEFAULT_BATCH_SCRIPT
+
+        # sstat memory usage for a running job
+        if cmd.startswith("sstat "):
+            for jid, out in demo_data.SSTAT_OUTPUTS.items():
+                if f"-j {jid}" in cmd:
+                    return out
+            return ""
+
+        # srun ... nvidia-smi (GPU stats for a running job)
+        if "nvidia-smi" in cmd:
+            for jid, out in demo_data.NVIDIA_SMI_OUTPUTS.items():
+                if f"--jobid={jid}" in cmd:
+                    return out
+            return ""
+
+        # scancel <id> — no-op in demo mode but report success
+        if cmd.startswith("scancel "):
+            return ""
+
+        # echo "success" — used by check_connection
+        if cmd.startswith("echo "):
+            return cmd.split(None, 1)[1].strip().strip('"')
+
+        return ""
+
+    def stream_command(
+        self,
+        command: str,
+        on_line: Callable[[str], None],
+        should_stop: Callable[[], bool] = lambda: False,
+        timeout: int = 10,
+        poll_interval: float = 0.1,
+    ) -> None:
+        """Replay canned log content for ``tail -f <path>`` commands."""
+        from slurm_monitor import demo_data
+
+        cmd = command.strip()
+        # Expected form: ``tail -n 50 -f /path/to/log``
+        path = ""
+        if "-f " in cmd:
+            path = cmd.split("-f ", 1)[1].strip()
+        content = demo_data.get_log_content(path)
+        for line in content.splitlines():
+            if should_stop():
+                return
+            on_line(line)
+        # Hold the "stream" open until the caller asks us to stop,
+        # mimicking the behavior of ``tail -f`` on a live cluster so
+        # the LogScreen header stays in FOLLOW mode.
+        while not should_stop():
+            time.sleep(poll_interval)

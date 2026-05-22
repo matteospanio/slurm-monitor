@@ -100,7 +100,7 @@ class LogScreen(Screen):
         self.ssh_client = ssh_client
         self.tail_lines = tail_lines
         self.stream = stream
-        self._channel = None
+        self._stop_stream = False
         self._follow = True
         # Plain-text mirror of what we wrote to RichLog. Used for search
         # and save-to-disk. Capped at MAX_BUFFER_LINES to bound memory
@@ -163,34 +163,15 @@ class LogScreen(Screen):
 
     def _stream_log(self) -> None:
         """Run tail -f on the remote host and feed lines to the log widget."""
+        def _on_line(text: str) -> None:
+            self.app.call_from_thread(self._push_line, text)
+
         try:
-            self.ssh_client.connect(timeout=10)
-            transport = self.ssh_client._client.get_transport()
-            self._channel = transport.open_session()
-            self._channel.exec_command(f"tail -n {self.tail_lines} -f {self.log_path}")
-
-            buf = b""
-            while not self._channel.exit_status_ready():
-                if self._channel.recv_ready():
-                    data = self._channel.recv(4096)
-                    if not data:
-                        break
-                    buf += data
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        self.app.call_from_thread(
-                            self._push_line, line.decode("utf-8", errors="replace")
-                        )
-                else:
-                    import time
-                    time.sleep(0.1)
-
-            # Flush remaining buffer
-            if buf:
-                self.app.call_from_thread(
-                    self._push_line, buf.decode("utf-8", errors="replace")
-                )
-
+            self.ssh_client.stream_command(
+                f"tail -n {self.tail_lines} -f {self.log_path}",
+                on_line=_on_line,
+                should_stop=lambda: self._stop_stream,
+            )
         except Exception as e:
             self.app.call_from_thread(self._push_line, f"\n[ERROR] {e}")
 
@@ -215,13 +196,12 @@ class LogScreen(Screen):
 
     def action_close(self) -> None:
         """Close the log viewer and return to the previous screen."""
-        if self._channel is not None:
-            try:
-                self._channel.close()
-            except Exception:
-                pass
-            self._channel = None
+        self._stop_stream = True
         self.app.pop_screen()
+
+    def on_unmount(self) -> None:
+        """Make sure the background stream thread exits with the screen."""
+        self._stop_stream = True
 
     def action_help(self) -> None:
         from slurm_monitor.widgets.help_screen import HelpScreen

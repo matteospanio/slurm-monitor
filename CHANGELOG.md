@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-22
+
+First official public release.
+
+### Documentation
+
+- **Sphinx documentation site** under `docs/` (MyST Markdown source), organised into
+  *Getting started*, *Configuration*, *Usage*, and *Reference* guides. Built and
+  published to GitHub Pages on every push to `master` by `.github/workflows/docs.yml`.
+- **Screenshots generated from the real TUI** via `App.save_screenshot()` (SVG),
+  driven by a new `--demo` CLI flag that injects fixture data and avoids the need
+  for an SSH connection.
+- Existing flat `docs/user-guide.md` and `docs/configuration-examples.md` content
+  migrated into the structured guide tree.
+- Internal development roadmap `plan.md` removed; release notes live in this file
+  going forward.
+
+### Added
+
+- `--demo` CLI flag (`slurm-monitor --demo`) that launches the app against a
+  built-in fixture dataset — useful for demos, tutorials, and generating
+  documentation screenshots without a live Slurm cluster.
+- `slurm_monitor.demo_data` module with hand-crafted fixture outputs for `squeue`,
+  `sacct`, `scontrol`, `sinfo`, `sstat`, and `tail` of log files.
+- `DemoSSHClient` (in `slurm_monitor.ssh_wrapper`) which implements the
+  `SSHClient` interface against fixture data.
+- `SSHClient.stream_command()` method extracted from the log viewer so streaming
+  commands can be intercepted cleanly by `DemoSSHClient` and by future tests.
+
 ### Added — Epic 16: UI review pass
 
 - **Persistent help screen** (`?`): a `ModalScreen` lists the keybindings grouped by section for the current context (main, detail, dashboard, log). Replaces the old 10-second notify-toast.
