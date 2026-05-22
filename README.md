@@ -1,5 +1,6 @@
 # slurm-monitor
 
+[![Tests](https://github.com/matteospanio/slurm-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/matteospanio/slurm-monitor/actions/workflows/tests.yml)
 [![Docs](https://github.com/matteospanio/slurm-monitor/actions/workflows/docs.yml/badge.svg)](https://matteospanio.github.io/slurm-monitor/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)

@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install project + dev deps
+        run: uv sync --group dev --python ${{ matrix.python-version }}
+
+      - name: Run pytest
+        # COLUMNS / LINES / TERM keep Textual's pilot deterministic in CI.
+        env:
+          COLUMNS: "120"
+          LINES: "36"
+          TERM: "xterm-256color"
+        run: uv run --python ${{ matrix.python-version }} pytest -v --tb=short
