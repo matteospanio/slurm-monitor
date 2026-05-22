@@ -34,6 +34,10 @@ class JobDetailScreen(Screen):
         Binding("q", "close", "Back"),
         Binding("o", "view_stdout", "View stdout"),
         Binding("e", "view_stderr", "View stderr"),
+        Binding("v", "view_script", "Batch script"),
+        Binding("c", "cancel_job", "scancel"),
+        Binding("y", "yank", "Copy"),
+        Binding("question_mark", "help", "Help"),
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
         Binding("g", "scroll_home", "Top", show=False),
@@ -69,6 +73,8 @@ class JobDetailScreen(Screen):
         self.ssh_client = ssh_client
         self.ssh_timeout = ssh_timeout
         self.details: Optional[JobDetails] = None
+        # Cycle index for the `y` (yank) action — increments each time.
+        self._yank_idx: int = 0
 
     def compose(self) -> ComposeResult:
         yield DetailHeader(f" Job {self.job.job_id}: {self.job.name}")
@@ -91,6 +97,12 @@ class JobDetailScreen(Screen):
 
     def on_worker_state_changed(self, event) -> None:
         from textual.worker import WorkerState
+
+        # Only react to the detail-fetch worker. Other workers
+        # (e.g. detail-scancel-*) report their own results via notify.
+        worker_name = event.worker.name or ""
+        if worker_name.startswith("detail-scancel-"):
+            return
 
         if event.state == WorkerState.SUCCESS:
             self.details = event.worker.result
@@ -244,6 +256,98 @@ class JobDetailScreen(Screen):
 
     def action_close(self) -> None:
         self.app.pop_screen()
+
+    def action_help(self) -> None:
+        from slurm_monitor.widgets.help_screen import HelpScreen
+
+        self.app.push_screen(HelpScreen(context="detail"))
+
+    def _yank_targets(self) -> list[tuple[str, str]]:
+        """Build the list of (label, value) yank targets for this job.
+
+        Order: job_id → stdout path → stderr path → work_dir, skipping
+        any target whose value is empty.
+        """
+        targets: list[tuple[str, str]] = [("job ID", self.job.job_id)]
+        d = self.details
+        if d:
+            if d.stdout_path:
+                targets.append(("stdout path", d.stdout_path))
+            if d.stderr_path:
+                targets.append(("stderr path", d.stderr_path))
+        if self.job.work_dir:
+            targets.append(("work dir", self.job.work_dir))
+        return targets
+
+    def action_view_script(self) -> None:
+        """Open the read-only batch-script viewer for this job."""
+        from slurm_monitor.widgets.batch_script_screen import BatchScriptScreen
+
+        self.app.push_screen(
+            BatchScriptScreen(self.job, self.ssh_client, self.ssh_timeout)
+        )
+
+    def action_cancel_job(self) -> None:
+        """Delegate to the app's scancel action so confirmation+SSH live in one place."""
+        # The app owns the SSH client and the per-profile state needed
+        # to refresh after a successful scancel. Defer to it.
+        target = self.job
+        if target.state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}:
+            self.notify(
+                f"Job {target.job_id} is already {target.state}",
+                severity="warning",
+                timeout=3,
+            )
+            return
+
+        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+
+        msg = f"Cancel job {target.job_id} ({target.name})?"
+        self.app.push_screen(
+            ConfirmScreen(msg, dangerous=True, confirm_label="scancel"),
+            callback=lambda yes: self._do_scancel(target, yes),
+        )
+
+    def _do_scancel(self, job: SlurmJob, confirmed) -> None:
+        if not confirmed:
+            return
+        import shlex
+
+        quoted = shlex.quote(job.job_id)
+
+        def _run() -> None:
+            try:
+                self.ssh_client.execute(
+                    f"scancel {quoted}", timeout=self.ssh_timeout
+                )
+            except Exception as exc:
+                self.app.call_from_thread(
+                    self.notify, f"scancel failed: {exc}", severity="error", timeout=5
+                )
+                return
+            self.app.call_from_thread(
+                self.notify, f"Cancelled job {job.job_id}", timeout=3
+            )
+
+        self.run_worker(_run, thread=True, name=f"detail-scancel-{job.job_id}")
+
+    def action_yank(self) -> None:
+        """Copy a job-related value to the clipboard. Cycles through targets."""
+        from slurm_monitor.widgets._clipboard import copy_osc52
+
+        targets = self._yank_targets()
+        if not targets:
+            return
+        label, value = targets[self._yank_idx % len(targets)]
+        self._yank_idx += 1
+        if copy_osc52(value):
+            self.notify(f"Copied {label}: {value}", timeout=2)
+        else:
+            self.notify(
+                f"Clipboard unavailable — {label}: {value}",
+                severity="warning",
+                timeout=3,
+            )
 
     def action_scroll_down(self) -> None:
         self.query_one("#detail-scroll", ScrollableContainer).scroll_down()

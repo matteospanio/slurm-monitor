@@ -5,7 +5,7 @@ import pytest
 from textual.app import App, ComposeResult
 
 from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.widgets.job_table import JobTable, _truncate_path
+from slurm_monitor.widgets.job_table import JobTable, _truncate_name, _truncate_path
 
 
 def _make_job(job_id: str, name: str = "test", state: str = "RUNNING") -> SlurmJob:
@@ -38,6 +38,57 @@ class TestTruncatePath:
 
     def test_keeps_last_two_dirs(self):
         assert _truncate_path("/home/spanio/jobs/tmp/mxlGPT") == "../tmp/mxlGPT"
+
+
+class TestTruncateName:
+    def test_short_name_unchanged(self):
+        assert _truncate_name("short") == "short"
+
+    def test_exact_length(self):
+        name = "a" * 30
+        assert _truncate_name(name) == name
+
+    def test_long_name_truncated_with_ellipsis(self):
+        name = "a" * 40
+        result = _truncate_name(name)
+        assert len(result) == 30
+        assert result.endswith("…")
+
+    def test_none_returns_empty(self):
+        assert _truncate_name(None) == ""
+
+
+class TestGpuColumn:
+    """GPU column should render allocated GPUs from job.gres."""
+
+    @pytest.mark.asyncio
+    async def test_gpu_column_rendered_for_typed_gres(self):
+        from textual.widgets import DataTable
+
+        job = SlurmJob(
+            job_id="42", name="j", state="RUNNING", time="00:01", gres="gpu:l40s:4"
+        )
+        async with _JobTableApp().run_test() as pilot:
+            table = pilot.app.query_one("#table", JobTable)
+            table.update_jobs([job])
+
+            # GPU is the 5th column (index 4) per Task 16.2 ordering.
+            row = table.get_row_at(0)
+            gpu_cell = row[4]
+            text = gpu_cell.plain if hasattr(gpu_cell, "plain") else str(gpu_cell)
+            assert text == "4x l40s"
+
+    @pytest.mark.asyncio
+    async def test_gpu_column_empty_for_no_gres(self):
+        job = SlurmJob(job_id="1", name="j", state="RUNNING", time="00:01")
+        async with _JobTableApp().run_test() as pilot:
+            table = pilot.app.query_one("#table", JobTable)
+            table.update_jobs([job])
+
+            row = table.get_row_at(0)
+            gpu_cell = row[4]
+            text = gpu_cell.plain if hasattr(gpu_cell, "plain") else str(gpu_cell)
+            assert text == ""
 
 
 class TestCursorPreservation:

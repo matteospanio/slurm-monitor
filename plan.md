@@ -450,3 +450,88 @@ Goal: Replace the silent "empty default profile" fallback with an interactive Te
   - `run_first_run_wizard(save_path)` runs a tiny `WizardApp` that loops the wizard + confirm screens, then persists the collected profiles via `ConfigLoader.save_toml`.
   - `cli.main` invokes the wizard when `locate` reports `found=False` and `--config`/`--host` were not supplied. Cancellation exits 1 with a friendly message.
   - Verification: 16 wizard tests + 7 CLI tests; 352 tests pass overall.
+
+## 🪛 Epic 16: UI Review Pass — Polish + Read-only Enhancements + scancel
+
+Goal: act on a full UI audit. Improve discoverability (help screen, hints), responsiveness on small terminals, error feedback, and missing power-user actions (in-log search, save-to-disk, OSC 52 yank, scancel, batch-script viewer). Read-only with a single destructive action gated by a confirm modal.
+
+- [x] Task 16.1: Resizable / smarter `JobDetail` bottom panel
+
+  - CSS switched from fixed `height: 3` to `height: auto; min-height: 2; max-height: 6` so PENDING jobs with reason/rank/QOS/priority/submit_time no longer overflow.
+  - `truncate_path` promoted to `widgets/_utils.py` and reused. `JobDetail` now truncates long `work_dir` paths.
+  - New `D,shift+d` binding on the App toggles the detail panel display.
+  - Verification: 2 new pilot tests; 357 tests pass.
+
+- [x] Task 16.2: Responsive `JobTable` columns + GPU column
+
+  - Added a `GPU` column rendering `SlurmJob.gpu_display` (e.g. `4x l40s`).
+  - Reordered columns to `ID | State | Name | Time | GPU | Reason | Rank | Work Dir`.
+  - Long job names truncated to 30 chars (`_truncate_name`).
+  - Verification: 6 new tests covering GPU column rendering and name truncation; full suite stays green.
+
+- [x] Task 16.3: Per-profile filter / sort isolation
+
+  - `state_filter`, `name_filter`, `sort_mode` moved off the App onto `ProfileTab` so each tab remembers its own view.
+  - `on_tabbed_content_tab_activated` syncs the `FilterBar` input and the `StatusBar` to the newly-active tab.
+  - `FilterBar.set_value()` added for tab-switch hydration; `FilterBar.show()` accepts an `initial_value`.
+  - Verification: 3 new pilot tests (state, sort, name filter); behavior validated across `h`/`l` tab switches.
+
+- [x] Task 16.4: FilterBar UX — Escape closes, visible hint, "N of M shown"
+
+  - FilterBar now binds `escape` to `action_close`, which hides + clears + posts `FilterClosed`.
+  - `StatusBar.update_stats()` accepts `visible_count`; shows `"N of M shown"` while a filter is active, plus an always-on hint (`/ search · ? help`).
+  - Cryptic sort glyphs replaced with the literal mode (`Sort: time`).
+  - Verification: 2 new pilot tests in `test_app.py`.
+
+- [x] Task 16.5: Persistent help / cheatsheet screen
+
+  - New `HelpScreen(context)` modal under `widgets/help_screen.py` groups bindings by section (Navigation, Filtering & sorting, Job actions, Session, …) for each context (main / detail / dashboard / log).
+  - `?` now opens the modal from every screen; old notify-toast removed.
+  - Verification: 4 tests cover unknown-context fallback, body coverage, push from main, Esc dismiss.
+
+- [x] Task 16.6: Inline cluster capacity strip + textual sort labels
+
+  - `ClusterStatus` now also renders `240/512 CPU · 12/16 GPU · 1.4T/2T mem · 18 up · 1 down` when a `ClusterCapacity` is available (via `update_capacity`). Reuses `format_mem_human` from `scontrol_parser`.
+  - Sort indicator in `StatusBar` swapped from glyphs to words (`Sort: id`).
+  - Verification: 7 new tests in `test_cluster_status.py`.
+
+- [x] Task 16.7: Better partial-fetch error feedback
+
+  - `FetchResult` gained `partial_errors: dict[str, str]`. Each sub-fetch (queue_stats / pending_details / sinfo) records its exception string instead of being silently swallowed.
+  - `ConnectionStatus` reactive `warning_message` renders a yellow `⚠` next to the connection dot.
+  - `on_worker_state_changed` throttles consolidated warning notifications to one per profile every `PARTIAL_WARN_INTERVAL` (5 minutes).
+  - Verification: 2 new tests cover sinfo and queue_stats failures landing in `partial_errors`.
+
+- [x] Task 16.8: LogScreen search + save + copy
+
+  - `/` opens a bottom-docked search bar. `n` / `N` jump between case-insensitive matches; `_match_indices` tracks line offsets in the plain-text mirror.
+  - `w` saves the current buffer to `~/Downloads/<jobid>_<stream>.log` (falling back to `$HOME`).
+  - `y` copies the current match (or the most recent line) to clipboard via OSC 52.
+  - In-memory `_lines` mirror capped at 20 000 lines to bound memory on long sessions.
+  - Verification: 6 new tests (match predicate, save-to-disk, yank fallback to last line).
+
+- [x] Task 16.9: scancel with confirm modal
+
+  - New `widgets/confirm_screen.py` — generic `ConfirmScreen(message, dangerous=True) -> bool` modal with `y` / `n` / Esc / Enter / button clicks.
+  - `c` on the main screen and inside `JobDetailScreen` triggers a confirmation; on `y` the app runs `scancel <id>` via SSH in a worker (worker-name prefix `scancel-` so the existing `on_worker_state_changed` can route it).
+  - The `SlurmJob` is captured at the time of keypress to immunize against cursor movement during the confirm phase.
+  - Already-terminal states (COMPLETED, FAILED, CANCELLED, TIMEOUT) are short-circuited with a warning notify.
+  - Verification: 4 new pilot tests on the App + 3 modal tests in `test_confirm_screen.py`.
+
+- [x] Task 16.10: Inline batch-script viewer
+
+  - New `widgets/batch_script_screen.py` runs `scontrol write batch_script <jobid> -` over SSH and renders the result read-only in a `RichLog`.
+  - `v` on `JobDetailScreen` pushes it. `w` saves the script to disk, `y` copies the saved path to clipboard via OSC 52.
+  - Existing `JobDetailScreen.on_worker_state_changed` now filters out the new `detail-scancel-*` worker so its result handling isn't confused.
+  - Verification: 4 new tests in `test_batch_script_screen.py`.
+
+- [x] Task 16.11: OSC 52 clipboard helper
+
+  - New `widgets/_clipboard.py` with `build_osc52_sequence(text)` and `copy_osc52(text, fileobj=None)` that prefers `/dev/tty`, then `sys.stdout.buffer`, gracefully returning `False` on non-TTY environments.
+  - Used by every "y" binding (main screen, detail screen, log screen, batch-script screen).
+  - Verification: 6 unit tests in `test_clipboard.py` covering the escape format, base64 round-trip, fileobj writes, empty input, and failure paths.
+
+- [x] Task 16.12: Documentation + test sweep
+
+  - CHANGELOG.md, README.md, and plan.md updated with Epic 16 entries and the full updated keybinding tables.
+  - Final state: ~52 new tests across 4 new test files (`test_help_screen.py`, `test_confirm_screen.py`, `test_clipboard.py`, `test_batch_script_screen.py`, `test_cluster_status.py`) plus additions to `test_app.py`, `test_job_table.py`, and `test_log_viewer.py`. **404 tests pass.**

@@ -6,6 +6,7 @@ from rich.text import Text
 from textual.widgets import Static
 
 from slurm_monitor.squeue_parser import SlurmJob
+from slurm_monitor.widgets._utils import truncate_path
 
 
 class JobDetail(Static):
@@ -67,6 +68,6 @@ class JobDetail(Static):
 
         if job.work_dir:
             text.append("\nWork Dir: ", style="dim")
-            text.append(job.work_dir)
+            text.append(truncate_path(job.work_dir, components=3))
 
         return text

@@ -29,7 +29,9 @@ JobTable > .datatable--header {
 
 JobDetail {
     dock: bottom;
-    height: 3;
+    height: auto;
+    min-height: 2;
+    max-height: 6;
     background: $surface;
     color: $text;
     padding: 0 1;

@@ -73,6 +73,7 @@ class ClusterDashboardScreen(Screen):
         Binding("escape", "close", "Back", priority=True),
         Binding("q", "close", "Back"),
         Binding("r", "refresh", "Refresh"),
+        Binding("question_mark", "help", "Help"),
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
         Binding("g", "scroll_home", "Top", show=False),
@@ -229,6 +230,11 @@ class ClusterDashboardScreen(Screen):
 
     def action_refresh(self) -> None:
         self._kick_refresh()
+
+    def action_help(self) -> None:
+        from slurm_monitor.widgets.help_screen import HelpScreen
+
+        self.app.push_screen(HelpScreen(context="dashboard"))
 
     def action_scroll_down(self) -> None:
         self.query_one("#dashboard-scroll", ScrollableContainer).scroll_down()

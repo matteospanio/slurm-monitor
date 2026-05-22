@@ -34,24 +34,62 @@ slurm-monitor
 
 ### Keyboard Shortcuts
 
+#### Main screen (job list)
+
 | Key | Action |
 |-----|--------|
 | `q` | Quit application |
 | `r` | Manually refresh job data |
+| `?` | Open the help cheatsheet |
 | `j`/`k` | Navigate down/up (Vim-style) |
 | `g`/`G` | Jump to top/bottom of list |
 | `h`/`l` | Switch to previous/next profile tab |
-| `d` | Open the cluster dashboard (capacity, partitions, nodes) |
 | `Enter` | Open job detail screen |
-| `o` | View stdout log (from detail screen) |
-| `e` | View stderr log (from detail screen) |
-| `f` | Toggle follow mode (in log viewer) |
-| `/` | Search/filter jobs by name |
+| `d` | Open the cluster dashboard (capacity, partitions, nodes) |
+| `D` | Toggle the bottom job-detail panel |
+| `/` | Search jobs by name (Esc to clear, Enter to confirm) |
 | `1`-`4` | Filter by state (Running/Pending/Completed/Failed) |
 | `0` | Show all jobs |
 | `s` | Cycle sort mode (id/time/name/state) |
-| `?` | Show help |
+| `y` | Copy the selected job ID to the system clipboard (OSC 52) |
+| `c` | Cancel (`scancel`) the selected job — confirmation required |
 | `Esc` | Go back / close screen |
+
+#### Job detail screen
+
+| Key | Action |
+|-----|--------|
+| `o` / `e` | Open the stdout / stderr log viewer |
+| `v` | Show the submitted batch script (read-only) |
+| `c` | Cancel this job — confirmation required |
+| `y` | Cycle copy targets: job ID → stdout → stderr → work dir |
+| `?` | Help |
+| `j`/`k`/`g`/`G` | Scroll the detail body |
+| `Esc` / `q` | Back to the job list |
+
+#### Log viewer
+
+| Key | Action |
+|-----|--------|
+| `f` | Toggle follow / pause auto-scroll |
+| `/` | Search the log buffer (case-insensitive) |
+| `n` / `N` | Jump to next / previous match |
+| `w` | Save the buffer to a local file |
+| `y` | Copy the current match line to the clipboard |
+| `?` | Help |
+| `j`/`k`/`g`/`G` | Scroll |
+| `Esc` / `q` | Back |
+
+#### Cluster dashboard
+
+| Key | Action |
+|-----|--------|
+| `r` | Refresh sinfo now |
+| `?` | Help |
+| `j`/`k`/`g`/`G` | Scroll |
+| `Esc` / `q` | Back |
+
+OSC 52 clipboard support depends on the terminal: works in iTerm2, WezTerm, kitty, Alacritty, and tmux configured with `set-clipboard on`.
 
 ### Navigation Flow
 

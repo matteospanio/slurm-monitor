@@ -257,3 +257,256 @@ class TestVimNavigation:
             assert app._get_active_profile_name() == "clusterA"
             await pilot.press("h")
             assert app._get_active_profile_name() == "clusterA"
+
+
+class TestScancelAction:
+    """`c` opens the confirm modal; only on `y` is scancel actually sent."""
+
+    @pytest.mark.asyncio
+    async def test_c_with_no_jobs_notifies(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = []
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            # No SSH should be touched.
+            with patch.object(tab.ssh_client, "execute") as mock_exec:
+                await pilot.press("c")
+                await pilot.pause()
+                mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_c_opens_confirm_screen(self):
+        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [_make_job("100")]
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            await pilot.press("c")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmScreen)
+
+    @pytest.mark.asyncio
+    async def test_c_y_triggers_scancel(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [_make_job("100")]
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            with patch.object(
+                tab.ssh_client, "execute", return_value=""
+            ) as mock_exec:
+                await pilot.press("c")
+                await pilot.pause()
+                await pilot.press("y")
+                await pilot.pause(0.3)  # let the worker run
+
+                # First positional arg should be "scancel 100"
+                calls = [c for c in mock_exec.call_args_list]
+                assert any(
+                    "scancel" in c.args[0] and "100" in c.args[0]
+                    for c in calls
+                )
+
+    @pytest.mark.asyncio
+    async def test_c_n_does_not_call_scancel(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [_make_job("100")]
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            with patch.object(tab.ssh_client, "execute") as mock_exec:
+                await pilot.press("c")
+                await pilot.pause()
+                await pilot.press("n")
+                await pilot.pause()
+                mock_exec.assert_not_called()
+
+
+class TestPartialFetchErrors:
+    """Sub-fetch failures (sinfo / queue_stats / pending_details) are
+    captured into FetchResult.partial_errors and surfaced as warnings
+    without breaking the main fetch."""
+
+    def test_sinfo_failure_recorded_in_partial_errors(self, app):
+        tab = app._profile_tabs["test"]
+        tab._sinfo_last_fetch = 0.0  # force a sinfo fetch attempt
+
+        with patch(
+            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+        ), patch(
+            "slurm_monitor.sacct_parser.fetch_sacct_jobs", return_value=[]
+        ), patch(
+            "slurm_monitor.app.fetch_sinfo",
+            side_effect=RuntimeError("sinfo unavailable"),
+        ):
+            result = app._fetch_jobs(tab, "test")
+
+        assert result.error is None
+        assert "sinfo" in result.partial_errors
+        assert "sinfo unavailable" in result.partial_errors["sinfo"]
+
+    def test_queue_stats_failure_isolated(self, app):
+        tab = app._profile_tabs["test"]
+        tab._queue_stats_last_fetch = 0.0
+
+        with patch(
+            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+        ), patch(
+            "slurm_monitor.sacct_parser.fetch_sacct_jobs", return_value=[]
+        ), patch(
+            "slurm_monitor.app.fetch_cluster_queue_stats",
+            side_effect=RuntimeError("network blip"),
+        ):
+            result = app._fetch_jobs(tab, "test")
+
+        assert result.error is None
+        assert "queue_stats" in result.partial_errors
+
+
+class TestFilterBarUX:
+    """Escape closes the filter bar and clears the search."""
+
+    @pytest.mark.asyncio
+    async def test_slash_then_escape_clears_filter(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            from slurm_monitor.widgets.filter_bar import FilterBar
+            from textual.widgets import Input
+
+            await pilot.press("slash")
+            await pilot.pause()
+            filter_bar = app.query_one("#filter-bar", FilterBar)
+            assert filter_bar.display is True
+
+            inp = filter_bar.query_one(Input)
+            inp.value = "training"
+            await pilot.pause()
+
+            tab = app._profile_tabs["clusterA"]
+            assert tab.name_filter == "training"
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert filter_bar.display is False
+            assert tab.name_filter == ""
+
+    @pytest.mark.asyncio
+    async def test_status_bar_shows_visible_count_when_filtered(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            tab = app._profile_tabs["clusterA"]
+            tab.jobs = [
+                _make_job("1"),
+                _make_job("2"),
+                _make_job("3"),
+            ]
+            tab.jobs[1].state = "PENDING"
+            tab.state_filter = "RUNNING"
+            app._update_display("clusterA")
+            await pilot.pause()
+
+            from slurm_monitor.widgets.status_bar import StatusBar
+            sb = app.query_one("#status-bar", StatusBar)
+            rendered = str(sb.render())
+            assert "2 of 3 shown" in rendered
+
+
+class TestPerTabFilterIsolation:
+    """Filter / search / sort state should be remembered per profile tab."""
+
+    @pytest.mark.asyncio
+    async def test_state_filter_isolated_per_tab(self):
+        app = SlurmMonitorApp(config=_multi_profile_config())
+        async with app.run_test() as pilot:
+            # Start on alpha; press 1 to filter RUNNING
+            assert app._get_active_profile_name() == "alpha"
+            await pilot.press("1")
+            assert app._profile_tabs["alpha"].state_filter == "RUNNING"
+
+            # Switch to beta — its filter should still be ALL
+            await pilot.press("l")
+            assert app._get_active_profile_name() == "beta"
+            assert app._profile_tabs["beta"].state_filter == "ALL"
+
+            # Set beta to PENDING
+            await pilot.press("2")
+            assert app._profile_tabs["beta"].state_filter == "PENDING"
+
+            # Switch back to alpha — RUNNING preserved
+            await pilot.press("h")
+            assert app._get_active_profile_name() == "alpha"
+            assert app._profile_tabs["alpha"].state_filter == "RUNNING"
+            # beta still PENDING
+            assert app._profile_tabs["beta"].state_filter == "PENDING"
+
+    @pytest.mark.asyncio
+    async def test_sort_mode_isolated_per_tab(self):
+        app = SlurmMonitorApp(config=_multi_profile_config())
+        async with app.run_test() as pilot:
+            await pilot.press("s")  # alpha → time
+            assert app._profile_tabs["alpha"].sort_mode == "time"
+
+            await pilot.press("l")  # → beta, still default
+            assert app._profile_tabs["beta"].sort_mode == "id"
+
+            await pilot.press("s")  # beta → time
+            await pilot.press("s")  # beta → name
+            assert app._profile_tabs["beta"].sort_mode == "name"
+
+            await pilot.press("h")  # back to alpha
+            assert app._profile_tabs["alpha"].sort_mode == "time"
+
+    @pytest.mark.asyncio
+    async def test_name_filter_isolated_per_tab(self):
+        app = SlurmMonitorApp(config=_multi_profile_config())
+        async with app.run_test() as pilot:
+            app._profile_tabs["alpha"].name_filter = "training"
+            app._profile_tabs["beta"].name_filter = ""
+
+            # Switching tabs should reflect the active tab's filter
+            await pilot.press("l")
+            assert app._get_active_profile_name() == "beta"
+            filter_bar = app.query_one("#filter-bar")
+            from textual.widgets import Input
+            assert filter_bar.query_one(Input).value == ""
+
+            await pilot.press("h")
+            assert app._get_active_profile_name() == "alpha"
+            assert filter_bar.query_one(Input).value == "training"
+
+
+class TestDetailPanelToggle:
+    """Capital D hides / shows the JobDetail bottom panel."""
+
+    @pytest.mark.asyncio
+    async def test_shift_d_toggles_detail_panel(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            detail = app.query_one("#detail-clusterA", JobDetail)
+            assert detail.display is True
+
+            await pilot.press("D")
+            assert detail.display is False
+
+            await pilot.press("D")
+            assert detail.display is True
+
+    @pytest.mark.asyncio
+    async def test_shift_plus_d_alias_also_toggles(self):
+        app = SlurmMonitorApp(config=_single_profile_config())
+        async with app.run_test() as pilot:
+            detail = app.query_one("#detail-clusterA", JobDetail)
+            await pilot.press("shift+d")
+            assert detail.display is False

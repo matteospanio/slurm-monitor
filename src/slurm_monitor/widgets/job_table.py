@@ -1,24 +1,23 @@
 """Job table widget for Slurm Monitor."""
 
-from pathlib import PurePosixPath
-
 from rich.text import Text
 from textual.widgets import DataTable
 
 from slurm_monitor.squeue_parser import SlurmJob
+from slurm_monitor.widgets._utils import truncate_path as _truncate_path
+
+__all__ = ["JobTable", "_truncate_path"]
+
+_NAME_MAX = 30
 
 
-def _truncate_path(path: str, components: int = 2) -> str:
-    """Truncate a path to the last N components.
-
-    Example: '/home/user/projects/ml/train' -> '../ml/train'
-    """
-    if not path:
+def _truncate_name(name: str, max_len: int = _NAME_MAX) -> str:
+    """Truncate a job name to keep the table readable on narrow terminals."""
+    if name is None:
         return ""
-    parts = PurePosixPath(path).parts
-    if len(parts) <= components:
-        return path
-    return "../" + "/".join(parts[-components:])
+    if len(name) <= max_len:
+        return name
+    return name[: max_len - 1] + "…"  # ellipsis
 
 
 class JobTable(DataTable):
@@ -43,10 +42,15 @@ class JobTable(DataTable):
         self.cursor_type = "row"
         self.zebra_stripes = True
 
+        # Order chosen so the most-scanned fields (ID, State, Name) come
+        # first; Reason/Rank only carry data for PENDING rows but are
+        # always present so the layout doesn't shift when the queue
+        # changes.
         self.add_column("Job ID", key="job_id")
-        self.add_column("Name", key="name")
         self.add_column("State", key="state")
+        self.add_column("Name", key="name")
         self.add_column("Time", key="time")
+        self.add_column("GPU", key="gpu")
         self.add_column("Reason", key="reason")
         self.add_column("Rank", key="rank")
         self.add_column("Work Dir", key="work_dir")
@@ -74,11 +78,17 @@ class JobTable(DataTable):
                 if job.queue_rank is not None:
                     rank_text = Text(f"#{job.queue_rank}", style="cyan bold")
 
+            gpu_display = job.gpu_display
+            gpu_text = (
+                Text(gpu_display, style="cyan") if gpu_display else Text("")
+            )
+
             self.add_row(
                 job.job_id,
-                job.name,
                 styled_state,
+                _truncate_name(job.name),
                 Text(job.time, justify="right"),
+                gpu_text,
                 reason_text,
                 rank_text,
                 _truncate_path(job.work_dir or ""),

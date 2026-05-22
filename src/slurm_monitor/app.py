@@ -46,6 +46,7 @@ from slurm_monitor.widgets.job_table import JobTable
 from slurm_monitor.widgets.status_bar import StatusBar
 
 SINFO_REFRESH_SECONDS = 60.0
+PARTIAL_WARN_INTERVAL = 300.0  # 5 minutes between repeated partial-fetch warnings
 
 
 @dataclass
@@ -60,6 +61,10 @@ class FetchResult:
     nodes: list[NodeStats] = field(default_factory=list)
     sinfo_fetched: bool = False
     error: Optional[Exception] = None
+    # Non-fatal sub-fetch failures keyed by sub-call name. Filled when
+    # the main squeue/sacct fetch succeeded but an auxiliary call
+    # (queue_stats, pending_details, sinfo) raised an exception.
+    partial_errors: dict[str, str] = field(default_factory=dict)
 
 
 class ProfileTab:
@@ -82,6 +87,15 @@ class ProfileTab:
         self.partitions: list[PartitionStats] = []
         self.nodes: list[NodeStats] = []
         self._sinfo_last_fetch: float = 0.0
+        # Filter / sort state is per-tab so each profile remembers
+        # its own view independently when the user switches tabs.
+        self.state_filter: str = "ALL"
+        self.name_filter: str = ""
+        self.sort_mode: str = "id"  # id, time, state, name
+        # Throttle for non-fatal sub-fetch warnings. We only re-notify
+        # the user every PARTIAL_WARN_INTERVAL seconds even if the same
+        # auxiliary fetch keeps failing.
+        self._last_partial_warn_at: float = 0.0
 
     def close(self) -> None:
         """Clean up SSH connection."""
@@ -111,6 +125,8 @@ class SlurmMonitorApp(App):
         ("l", "next_tab", "Next tab"),
         ("enter", "view_job", "Details"),  # fallback when table not focused
         ("d", "view_dashboard", "Dashboard"),
+        # Real terminals send a literal "D" for Shift+D; bind both forms.
+        ("D,shift+d", "toggle_detail_panel", "Toggle detail panel"),
         ("slash", "toggle_filter", "Filter"),
         ("1", "filter_running", "Running"),
         ("2", "filter_pending", "Pending"),
@@ -118,15 +134,14 @@ class SlurmMonitorApp(App):
         ("4", "filter_failed", "Failed"),
         ("0", "filter_all", "All"),
         ("s", "cycle_sort", "Sort"),
+        ("y", "yank_job_id", "Copy job ID"),
+        ("c", "cancel_job", "scancel"),
     ]
 
     def __init__(self, config: Optional[AppConfig] = None):
         super().__init__()
         self.config = config or ConfigLoader.load()
         self._profile_tabs: dict[str, ProfileTab] = {}
-        self._state_filter = "ALL"
-        self._name_filter = ""
-        self._sort_mode = "id"  # id, time, state, name
 
         for name, profile in self.config.profiles.items():
             self._profile_tabs[name] = ProfileTab(profile)
@@ -240,6 +255,8 @@ class SlurmMonitorApp(App):
 
             merged = merge_jobs(active_jobs, historical_jobs)
 
+            partial_errors: dict[str, str] = {}
+
             # Fetch cluster-wide queue stats (cached separately, ~30s)
             queue_stats = None
             try:
@@ -250,8 +267,8 @@ class SlurmMonitorApp(App):
                     tab._queue_stats_last_fetch = now
                 else:
                     queue_stats = tab.queue_stats
-            except Exception:
-                pass  # Non-critical — don't break the main fetch
+            except Exception as e:
+                partial_errors["queue_stats"] = str(e)
 
             # Enrich PENDING jobs with reason, priority, QOS, rank
             pending_ids = [j.job_id for j in merged if j.state == "PENDING"]
@@ -272,8 +289,8 @@ class SlurmMonitorApp(App):
                             job.submit_time = info.submit_time
                         if job.job_id in ranks:
                             job.queue_rank = ranks[job.job_id]
-                except Exception:
-                    pass  # Non-critical
+                except Exception as e:
+                    partial_errors["pending_details"] = str(e)
 
             # Fetch sinfo (cluster nodes + partitions) at a slower cadence.
             cluster_capacity: Optional[ClusterCapacity] = None
@@ -286,8 +303,8 @@ class SlurmMonitorApp(App):
                         tab.ssh_client, timeout=tab.profile.ssh_timeout
                     )
                     sinfo_fetched = True
-            except Exception:
-                pass  # Non-critical — dashboard handles missing data gracefully
+            except Exception as e:
+                partial_errors["sinfo"] = str(e)
 
             return FetchResult(
                 profile_name=profile_name,
@@ -297,6 +314,7 @@ class SlurmMonitorApp(App):
                 partitions=partitions,
                 nodes=nodes_data,
                 sinfo_fetched=sinfo_fetched,
+                partial_errors=partial_errors,
             )
 
         except (SSHConnectionError, SSHTimeoutError) as e:
@@ -304,6 +322,26 @@ class SlurmMonitorApp(App):
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
+
+        if worker_name.startswith("scancel-"):
+            if event.state == WorkerState.SUCCESS:
+                profile_name, job_id, status, err = event.worker.result
+                if status == "ok":
+                    self.notify(f"Cancelled job {job_id}", timeout=3)
+                    self._refresh_profile(profile_name)
+                else:
+                    self.notify(
+                        f"scancel {job_id} failed: {err}",
+                        severity="error",
+                        timeout=5,
+                    )
+            elif event.state == WorkerState.ERROR:
+                err = event.worker.error
+                self.notify(
+                    f"scancel failed: {err}", severity="error", timeout=5
+                )
+            return
+
         if not worker_name.startswith("fetch-"):
             return
 
@@ -360,6 +398,23 @@ class SlurmMonitorApp(App):
                 status.error_message = None
                 tab._auth_attempts = 0
 
+                # Surface non-fatal sub-fetch failures (sinfo / queue
+                # stats / pending details). Throttled to once every
+                # PARTIAL_WARN_INTERVAL seconds per profile.
+                if result.partial_errors:
+                    failed = ", ".join(sorted(result.partial_errors.keys()))
+                    status.warning_message = f"partial: {failed}"
+                    now = time.time()
+                    if now - tab._last_partial_warn_at > PARTIAL_WARN_INTERVAL:
+                        tab._last_partial_warn_at = now
+                        self.notify(
+                            f"[{profile_name}] partial fetch failure: {failed}",
+                            severity="warning",
+                            timeout=5,
+                        )
+                else:
+                    status.warning_message = None
+
                 # Only update UI if this is the active tab
                 if profile_name == self._get_active_profile_name():
                     self._update_display(profile_name)
@@ -395,25 +450,25 @@ class SlurmMonitorApp(App):
         tab._auth_attempts += 1
         self._refresh_profile(profile_name)
 
-    def _get_filtered_jobs(self, jobs: list[SlurmJob]) -> list[SlurmJob]:
-        """Apply current filters and sorting to a job list."""
-        filtered = jobs
+    def _get_filtered_jobs(self, tab: ProfileTab) -> list[SlurmJob]:
+        """Apply the tab's filters and sorting to its job list."""
+        filtered = tab.jobs
 
-        if self._state_filter != "ALL":
-            filtered = filter_jobs_by_state(filtered, [self._state_filter])
+        if tab.state_filter != "ALL":
+            filtered = filter_jobs_by_state(filtered, [tab.state_filter])
 
-        if self._name_filter:
-            query = self._name_filter.lower()
+        if tab.name_filter:
+            query = tab.name_filter.lower()
             filtered = [
                 j for j in filtered
                 if query in j.name.lower() or query in j.job_id
             ]
 
-        if self._sort_mode == "time":
+        if tab.sort_mode == "time":
             filtered = sort_jobs_by_time(filtered)
-        elif self._sort_mode == "name":
+        elif tab.sort_mode == "name":
             filtered = sorted(filtered, key=lambda j: j.name.lower())
-        elif self._sort_mode == "state":
+        elif tab.sort_mode == "state":
             filtered = sorted(filtered, key=lambda j: j.state)
         # "id" is the default (already sorted by merge_jobs)
 
@@ -425,7 +480,7 @@ class SlurmMonitorApp(App):
         if tab is None:
             return
 
-        filtered = self._get_filtered_jobs(tab.jobs)
+        filtered = self._get_filtered_jobs(tab)
 
         try:
             table = self.query_one(f"#table-{profile_name}", JobTable)
@@ -454,6 +509,7 @@ class SlurmMonitorApp(App):
         try:
             cluster = self.query_one(f"#cluster-{profile_name}", ClusterStatus)
             cluster.update_stats(tab.queue_stats)
+            cluster.update_capacity(tab.cluster_capacity)
         except Exception:
             pass
 
@@ -461,9 +517,10 @@ class SlurmMonitorApp(App):
             status_bar = self.query_one("#status-bar", StatusBar)
             status_bar.update_stats(
                 tab.jobs,
-                filter_text=self._name_filter,
-                state_filter=self._state_filter,
-                sort_mode=self._sort_mode,
+                filter_text=tab.name_filter,
+                state_filter=tab.state_filter,
+                sort_mode=tab.sort_mode,
+                visible_count=len(filtered),
             )
         except Exception:
             pass
@@ -479,7 +536,7 @@ class SlurmMonitorApp(App):
         if tab is None:
             return
 
-        filtered = self._get_filtered_jobs(tab.jobs)
+        filtered = self._get_filtered_jobs(tab)
 
         try:
             table = self.query_one(f"#table-{active_name}", JobTable)
@@ -493,8 +550,22 @@ class SlurmMonitorApp(App):
             detail.set_job(None, has_jobs=bool(filtered))
 
     def on_tabbed_content_tab_activated(self, event) -> None:
-        """Refresh display when switching tabs."""
+        """Refresh display and sync filter UI when switching tabs."""
         active_name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(active_name)
+        if tab is None:
+            return
+
+        # Sync the filter input to the newly-active tab's name_filter so
+        # the user sees the right search text (if any) for this profile.
+        try:
+            filter_bar = self.query_one("#filter-bar", FilterBar)
+            filter_bar.set_value(tab.name_filter)
+            # Only show the filter bar if this tab has an active search.
+            filter_bar.display = bool(tab.name_filter)
+        except Exception:
+            pass
+
         self._update_display(active_name)
 
     # ── Actions ──────────────────────────────────────────────────────
@@ -509,19 +580,10 @@ class SlurmMonitorApp(App):
         self._refresh_profile(name)
 
     def action_help(self) -> None:
-        active = self._get_active_tab()
-        help_text = (
-            "Slurm Job Monitor - Help\n\n"
-            "q: Quit  r: Refresh  ?: Help\n"
-            "j/k: Navigate  g/G: Top/Bottom\n"
-            "h/l: Prev/Next tab  Enter: Job details  d: Cluster dashboard\n"
-            "/: Search\n"
-            "1: Running  2: Pending  3: Completed  4: Failed  0: All\n"
-            "s: Cycle sort (id/time/name/state)\n"
-            f"\nRefresh: {active.profile.refresh_interval}s  "
-            f"Sacct cache: {active.profile.sacct_refresh_interval}s"
-        )
-        self.notify(help_text, timeout=10)
+        """Open the modal keybinding cheatsheet for the main view."""
+        from slurm_monitor.widgets.help_screen import HelpScreen
+
+        self.push_screen(HelpScreen(context="main"))
 
     def action_cursor_down(self) -> None:
         name = self._get_active_profile_name()
@@ -579,6 +641,15 @@ class SlurmMonitorApp(App):
         idx = names.index(current) if current in names else 0
         tabbed.active = f"tab-{names[(idx - 1) % len(names)]}"
 
+    def action_toggle_detail_panel(self) -> None:
+        """Hide / show the bottom JobDetail panel for the active tab."""
+        name = self._get_active_profile_name()
+        try:
+            detail = self.query_one(f"#detail-{name}", JobDetail)
+        except Exception:
+            return
+        detail.display = not detail.display
+
     def action_view_dashboard(self) -> None:
         """Open the cluster dashboard for the active profile."""
         name = self._get_active_profile_name()
@@ -608,7 +679,7 @@ class SlurmMonitorApp(App):
         except Exception:
             return
 
-        filtered = self._get_filtered_jobs(tab.jobs)
+        filtered = self._get_filtered_jobs(tab)
 
         if table.cursor_row is None or table.cursor_row < 0:
             self.notify("No job selected", severity="warning", timeout=3)
@@ -631,17 +702,18 @@ class SlurmMonitorApp(App):
     # ── Filter actions ───────────────────────────────────────────────
 
     def action_toggle_filter(self) -> None:
-        """Toggle the search/filter bar."""
+        """Toggle the search/filter bar for the active tab."""
         filter_bar = self.query_one("#filter-bar", FilterBar)
+        tab = self._get_active_tab()
         if filter_bar.display:
             filter_bar.hide()
         else:
-            filter_bar.show()
+            filter_bar.show(initial_value=tab.name_filter)
 
     def on_filter_bar_filter_changed(self, event: FilterBar.FilterChanged) -> None:
-        self._name_filter = event.value
-        name = self._get_active_profile_name()
-        self._update_display(name)
+        tab = self._get_active_tab()
+        tab.name_filter = event.value
+        self._update_display(self._get_active_profile_name())
 
     def on_filter_bar_filter_closed(self, event: FilterBar.FilterClosed) -> None:
         # Return focus to the table
@@ -652,32 +724,144 @@ class SlurmMonitorApp(App):
             pass
 
     def _set_state_filter(self, state: str) -> None:
-        self._state_filter = state
-        name = self._get_active_profile_name()
-        self._update_display(name)
+        tab = self._get_active_tab()
+        tab.state_filter = state
+        self._update_display(self._get_active_profile_name())
 
     def action_filter_running(self) -> None:
-        self._set_state_filter("RUNNING" if self._state_filter != "RUNNING" else "ALL")
+        tab = self._get_active_tab()
+        self._set_state_filter("RUNNING" if tab.state_filter != "RUNNING" else "ALL")
 
     def action_filter_pending(self) -> None:
-        self._set_state_filter("PENDING" if self._state_filter != "PENDING" else "ALL")
+        tab = self._get_active_tab()
+        self._set_state_filter("PENDING" if tab.state_filter != "PENDING" else "ALL")
 
     def action_filter_completed(self) -> None:
-        self._set_state_filter("COMPLETED" if self._state_filter != "COMPLETED" else "ALL")
+        tab = self._get_active_tab()
+        self._set_state_filter(
+            "COMPLETED" if tab.state_filter != "COMPLETED" else "ALL"
+        )
 
     def action_filter_failed(self) -> None:
-        self._set_state_filter("FAILED" if self._state_filter != "FAILED" else "ALL")
+        tab = self._get_active_tab()
+        self._set_state_filter("FAILED" if tab.state_filter != "FAILED" else "ALL")
 
     def action_filter_all(self) -> None:
         self._set_state_filter("ALL")
 
+    def action_cancel_job(self) -> None:
+        """Cancel (scancel) the selected job after a confirmation modal."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+        if (
+            table.cursor_row is None
+            or table.cursor_row < 0
+            or table.cursor_row >= len(filtered)
+        ):
+            self.notify("No job selected", severity="warning", timeout=2)
+            return
+
+        # Capture the selected SlurmJob *now* — the cursor may move
+        # before the user confirms the modal, so we close over the
+        # object rather than re-reading the cursor index.
+        target = filtered[table.cursor_row]
+        if target.state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}:
+            self.notify(
+                f"Job {target.job_id} is already {target.state}",
+                severity="warning",
+                timeout=3,
+            )
+            return
+
+        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+
+        msg = f"Cancel job {target.job_id} ({target.name})?"
+        self.push_screen(
+            ConfirmScreen(msg, dangerous=True, confirm_label="scancel"),
+            callback=lambda yes, j=target, p=name: self._do_scancel(p, j, yes),
+        )
+
+    def _do_scancel(
+        self, profile_name: str, job: SlurmJob, confirmed: Optional[bool]
+    ) -> None:
+        if not confirmed:
+            return
+
+        import shlex
+
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        # job_id should be numeric, but quote it defensively to match
+        # the established pattern for shell args.
+        quoted = shlex.quote(job.job_id)
+
+        def _run() -> tuple[str, str, str, str]:
+            """Return (profile_name, job_id, status, error).
+
+            status is "ok" or "err". This shape is unpacked by
+            on_worker_state_changed via the scancel- worker-name prefix.
+            """
+            try:
+                tab.ssh_client.execute(
+                    f"scancel {quoted}", timeout=tab.profile.ssh_timeout
+                )
+                return profile_name, job.job_id, "ok", ""
+            except Exception as exc:
+                return profile_name, job.job_id, "err", str(exc)
+
+        self.run_worker(
+            _run, thread=True, name=f"scancel-{profile_name}-{job.job_id}"
+        )
+
+    def action_yank_job_id(self) -> None:
+        """Copy the selected job's ID to the system clipboard via OSC 52."""
+        from slurm_monitor.widgets._clipboard import copy_osc52
+
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+        if (
+            table.cursor_row is None
+            or table.cursor_row < 0
+            or table.cursor_row >= len(filtered)
+        ):
+            self.notify("No job selected", severity="warning", timeout=2)
+            return
+
+        job_id = filtered[table.cursor_row].job_id
+        if copy_osc52(job_id):
+            self.notify(f"Copied {job_id}", timeout=2)
+        else:
+            self.notify(
+                f"Clipboard unavailable — job ID: {job_id}",
+                severity="warning",
+                timeout=3,
+            )
+
     def action_cycle_sort(self) -> None:
         modes = ["id", "time", "name", "state"]
-        current = modes.index(self._sort_mode) if self._sort_mode in modes else 0
-        self._sort_mode = modes[(current + 1) % len(modes)]
-        self.notify(f"Sort: {self._sort_mode}", timeout=2)
-        name = self._get_active_profile_name()
-        self._update_display(name)
+        tab = self._get_active_tab()
+        current = modes.index(tab.sort_mode) if tab.sort_mode in modes else 0
+        tab.sort_mode = modes[(current + 1) % len(modes)]
+        self.notify(f"Sort: {tab.sort_mode}", timeout=2)
+        self._update_display(self._get_active_profile_name())
 
     def on_unmount(self) -> None:
         """Clean up SSH connections on exit."""

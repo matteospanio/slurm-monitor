@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Epic 16: UI review pass
+
+- **Persistent help screen** (`?`): a `ModalScreen` lists the keybindings grouped by section for the current context (main, detail, dashboard, log). Replaces the old 10-second notify-toast.
+- **Cluster capacity strip on the main screen**: the existing `ClusterStatus` line now also renders `240/512 CPU · 12/16 GPU · 1.4T/2T mem · 18 up · 1 down` when `sinfo` data is available, so cluster-wide health is visible without opening the dashboard.
+- **GPU column in the job table** (between Time and Reason). Reuses `SlurmJob.gpu_display`.
+- **Per-tab filter / search / sort isolation**: state filter, name search, and sort mode are now stored on `ProfileTab`. Switching tabs preserves each profile's view independently; the search input is re-seeded on tab switch.
+- **`D` (Shift+D)**: toggle the bottom job-detail panel.
+- **`y` to yank**: copies the selected job ID (main screen) or cycles through job ID → stdout path → stderr path → work dir (detail screen) to the system clipboard via OSC 52 (works over SSH on iTerm2, WezTerm, kitty, Alacritty, tmux with `set-clipboard on`).
+- **`c` to scancel** the selected job, guarded by a `ConfirmScreen` modal (Y/N). Works on the main screen and inside the detail screen. The captured `SlurmJob` is closed over so a cursor movement between confirm and execution can't target the wrong job.
+- **`v` to view the submitted batch script**: new `BatchScriptScreen` runs `scontrol write batch_script <jobid> -` and renders it read-only. Supports `w` save-to-disk and `y` copy-path-to-clipboard.
+- **In-log search**: `/` opens a search bar in `LogScreen`; `n` / `N` jump between case-insensitive matches.
+- **`w` save log buffer to disk** (default `~/Downloads/<jobid>_<stream>.log`).
+- **`y` copy log line** (current match or most-recent line) to clipboard via OSC 52.
+- **Partial-fetch warning surfacing**: when `sinfo`, `queue_stats`, or `pending_details` sub-fetches fail but the main job fetch still succeeds, the failure is recorded in `FetchResult.partial_errors`, shown as a yellow `⚠` next to the `ConnectionStatus` dot, and surfaced via `self.notify(...)` (throttled to once every 5 minutes per profile).
+- **Smarter status bar**: shows visible vs total counts (`5 of 18 shown`) when a filter is active; sort mode is rendered as a word (`Sort: time`) instead of a glyph; "/ search · ? help" hint when no filter is active.
+- **Resizable JobDetail panel**: CSS switched from `height: 3` to `height: auto; min-height: 2; max-height: 6` so PENDING job rows with reason/rank/QOS/priority/submit_time no longer overflow.
+- **`ConfirmScreen` widget** (`widgets/confirm_screen.py`), **`HelpScreen` widget** (`widgets/help_screen.py`), **`BatchScriptScreen` widget** (`widgets/batch_script_screen.py`), shared **OSC 52 clipboard helper** (`widgets/_clipboard.py`), and shared **path helpers** (`widgets/_utils.py`).
+- 52 new tests covering the above (404 total).
+
 ### Added
 
 - **Cluster dashboard screen** (`d` key). Full-screen view with cluster-wide CPU/GPU/memory bars, a partition summary table (nodes idle/mixed/alloc/down, CPUs free/total, GPUs used/total, memory total, up/down state), and a scrollable per-node table (state, CPU allocation, free/total memory, GPU usage, reason). Refreshes via `sinfo` every 60 s in the background and on demand with `r`. Supports `j`/`k`/`g`/`G` for scrolling and `Esc`/`q` to return.
