@@ -11,3 +11,6 @@ wheels/
 
 # Sphinx build output
 docs/_build/
+
+# Hi-res logo source (use docs/_static/logo.png — the optimised version)
+logo.png

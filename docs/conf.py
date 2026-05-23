@@ -33,6 +33,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "scripts"]
 html_theme = "furo"
 html_title = f"slurmhub {release}"
 html_static_path = ["_static"]
+html_logo = "_static/logo.png"
+html_favicon = "_static/favicon.png"
 html_theme_options = {
     "source_repository": "https://github.com/matteospanio/slurmhub",
     "source_branch": "master",

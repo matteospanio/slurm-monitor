@@ -1,11 +1,17 @@
-# slurmhub
+<p align="center">
+  <img src="docs/_static/logo.png" alt="slurmhub logo" width="200" />
+</p>
 
-[![Tests](https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml/badge.svg)](https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml)
-[![Docs](https://github.com/matteospanio/slurmhub/actions/workflows/docs.yml/badge.svg)](https://matteospanio.github.io/slurmhub/)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
-[![Built with Textual](https://img.shields.io/badge/built%20with-Textual-5546ff.svg)](https://textual.textualize.io/)
+<h1 align="center">slurmhub</h1>
+
+<p align="center">
+  <a href="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="https://matteospanio.github.io/slurmhub/"><img alt="Docs" src="https://github.com/matteospanio/slurmhub/actions/workflows/docs.yml/badge.svg"></a>
+  <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue.svg"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPLv3-blue.svg"></a>
+  <a href="CHANGELOG.md"><img alt="Version" src="https://img.shields.io/badge/version-1.0.0-green.svg"></a>
+  <a href="https://textual.textualize.io/"><img alt="Built with Textual" src="https://img.shields.io/badge/built%20with-Textual-5546ff.svg"></a>
+</p>
 
 A keyboard-driven terminal UI for monitoring [Slurm](https://slurm.schedmd.com/) jobs
 in real time over SSH. It runs the standard Slurm command-line tools
