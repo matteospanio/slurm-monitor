@@ -2,7 +2,7 @@
   <img src="docs/_static/logo.png" alt="slurmhub logo" width="200" />
 </p>
 
-<h1 align="center">slurmhub</h1>
+---
 
 <p align="center">
   <a href="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml/badge.svg"></a>
