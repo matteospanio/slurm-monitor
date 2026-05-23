@@ -2,10 +2,13 @@
 
 `slurmhub` uses [paramiko](https://www.paramiko.org/) (a pure-Python SSH library)
 to talk to the cluster. Everything you can do with the regular `ssh` command — key
-auth, password auth, jump hosts, agent forwarding, host aliases — works here too. The
-recommended setup is **passwordless key authentication via an SSH config alias**,
-because it lets the app reuse a single SSH connection across all the Slurm commands
-it issues.
+auth, password auth, jump hosts, agent forwarding, host aliases — works here too.
+
+```{tip}
+The recommended setup is **passwordless key authentication via an SSH config alias**.
+It lets the app reuse a single SSH connection across all the Slurm commands it issues
+and removes the need to type a password every time the auto-refresh runs.
+```
 
 ## Generate an SSH key
 
@@ -89,8 +92,13 @@ ssh.jump_host = "bastion.example.org"
 
 If you cannot use keys, leave the password fields empty in the config — the app will
 detect the auth failure on the first refresh and pop up an interactive password
-prompt. The password is held in memory only — it is never written to disk. You get up
-to three attempts before the app stops re-prompting.
+prompt.
+
+```{important}
+The password is held in memory only — it is **never written to disk**. You get up to
+three attempts before the app stops re-prompting; restart `slurmhub` to retry after
+that.
+```
 
 ## Verifying the cluster side
 

@@ -47,6 +47,9 @@ scroll the log back or restart the viewer to refill the buffer.
 
 ## Reproducing UI bugs without a cluster
 
-Use `slurmhub --demo` to exercise the UI against built-in fixture data. If a
-visual bug reproduces in demo mode, the bug is in the TUI code — not in your cluster
-or your config.
+```{tip}
+Use `slurmhub --demo` to exercise the UI against built-in fixture data. If a visual
+bug reproduces in demo mode, the bug is in the TUI code — not in your cluster or
+your config. Attach the reproduction steps (and the terminal you're using) to your
+bug report.
+```

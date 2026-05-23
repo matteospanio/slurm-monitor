@@ -5,11 +5,11 @@
 ---
 
 <p align="center">
+  <a href="https://pypi.org/project/slurmhub/"><img alt="PyPI" src="https://img.shields.io/pypi/v/slurmhub.svg?color=brightgreen&label=pypi"></a>
   <a href="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml/badge.svg"></a>
   <a href="https://matteospanio.github.io/slurmhub/"><img alt="Docs" src="https://github.com/matteospanio/slurmhub/actions/workflows/docs.yml/badge.svg"></a>
   <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue.svg"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPLv3-blue.svg"></a>
-  <a href="CHANGELOG.md"><img alt="Version" src="https://img.shields.io/badge/version-1.0.0-green.svg"></a>
   <a href="https://textual.textualize.io/"><img alt="Built with Textual" src="https://img.shields.io/badge/built%20with-Textual-5546ff.svg"></a>
 </p>
 
@@ -41,33 +41,39 @@ built with [Textual](https://textual.textualize.io/).
 
 ## Installation
 
-`slurmhub` is built with [uv](https://github.com/astral-sh/uv). It requires
-Python ≥ 3.12 and an OpenSSH client.
+`slurmhub` is published on [PyPI](https://pypi.org/project/slurmhub/) and requires
+**Python ≥ 3.12** and an OpenSSH client.
+
+The recommended installers are [uv](https://docs.astral.sh/uv/) or
+[pipx](https://pipx.pypa.io/) — both install `slurmhub` into its own isolated
+environment so its dependencies don't pollute your system Python:
 
 ```bash
-# Install uv (one-time)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# uv (https://docs.astral.sh/uv/)
+uvx slurmhub                         # one-shot run
+uv tool install slurmhub             # persistent install on $PATH
 
-# Install slurmhub as a CLI tool
-uv tool install git+https://github.com/matteospanio/slurmhub.git
+# pipx (https://pipx.pypa.io/)
+pipx install slurmhub
 
-# Run
-slurmhub
+# plain pip — works, but consider a venv first
+pip install --user slurmhub
 ```
 
-Or clone and run from source:
+Then:
+
+```bash
+slurmhub --demo    # try it without an SSH connection
+slurmhub           # run against your configured cluster(s)
+```
+
+Or clone and run from source (for development):
 
 ```bash
 git clone https://github.com/matteospanio/slurmhub.git
 cd slurmhub
 uv sync
 uv run slurmhub
-```
-
-Try it without a Slurm cluster:
-
-```bash
-slurmhub --demo
 ```
 
 ## Quick start

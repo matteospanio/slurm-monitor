@@ -10,16 +10,24 @@ existing file wins:
 3. `./config.toml` *(working directory)*
 4. `./config.json`
 
-If none of these exists, the [first-run wizard](../getting-started/quickstart.md#first-run-wizard)
-launches automatically. You can also pass `--config /path/to/file.toml` to skip the
-search.
+```{tip}
+If none of these exists, the
+[first-run wizard](../getting-started/quickstart.md#first-run-wizard) launches
+automatically — you don't have to write a config by hand. Pass
+`--config /path/to/file.toml` to point at a specific file and skip the search.
+```
 
 ## Structure
 
-A TOML config has two sections:
+A config has two sections:
 
-- **`[defaults]`** — values applied to every profile, unless overridden
-- **`[profiles.<name>]`** — one block per cluster you want to monitor
+- **`defaults`** — values applied to every profile, unless overridden
+- **`profiles.<name>`** — one block per cluster you want to monitor
+
+::::{tab-set}
+
+:::{tab-item} TOML (recommended)
+:sync: toml
 
 ```toml
 [defaults]
@@ -45,6 +53,39 @@ sacct_format  = "JobID,JobName,State,Elapsed,WorkDir"
 [profiles.mycluster]
 host = "mycluster"            # required — SSH alias or hostname
 ```
+:::
+
+:::{tab-item} JSON (legacy)
+:sync: json
+
+JSON is still supported for backward compatibility, but it only understands the
+old flat schema — no multi-profile support, no per-profile overrides:
+
+```json
+{
+  "remote_host": "mycluster",
+  "ssh_timeout": 10,
+  "refresh_interval": 5,
+  "log_paths": {
+    "default_pattern": "{work_dir}/logs/{job_id}.out",
+    "specific_projects": {
+      "ml_project": "{work_dir}/ml/logs/{job_id}.log"
+    }
+  }
+}
+```
+
+The loader converts this to a single `default` profile at runtime.
+
+```{warning}
+The JSON format is frozen — new features are added to the TOML schema only.
+If you maintain a JSON config today, plan to migrate; the
+[first-run wizard](../getting-started/quickstart.md#first-run-wizard) writes a
+fresh TOML file you can use as a starting point.
+```
+:::
+
+::::
 
 ## Field reference
 
@@ -64,27 +105,6 @@ host = "mycluster"            # required — SSH alias or hostname
 | `log.view_command` | log | string | `tail -f {log_path}` | Command used internally when streaming logs. Supports `{log_path}`. |
 | `slurm.squeue_format` | slurm | string | `%i\|%j\|%T\|%M\|%Z\|%b` | `squeue -o` format. |
 | `slurm.sacct_format` | slurm | string | `JobID,JobName,State,Elapsed,WorkDir` | `sacct --format` fields. |
-
-## Legacy JSON
-
-The previous flat JSON format is still loaded if no TOML file is present, and
-converted to a single `default` profile at runtime:
-
-```json
-{
-  "remote_host": "cluster.example.edu",
-  "ssh_timeout": 10,
-  "refresh_interval": 5,
-  "log_paths": {
-    "default_pattern": "{work_dir}/logs/{job_id}.out",
-    "specific_projects": {
-      "ml_project": "{work_dir}/ml/logs/{job_id}.log"
-    }
-  }
-}
-```
-
-New deployments should use TOML — see [Examples](examples.md).
 
 ## Where to go next
 

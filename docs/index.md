@@ -36,7 +36,7 @@ between them with `h` / `l`. Filter, search and sort state is remembered per tab
 
 ```bash
 # Install
-uv tool install slurmhub
+uv tool install slurmhub      # or: pipx install slurmhub
 
 # Try it without an SSH connection — the --demo flag uses built-in fixture data
 slurmhub --demo
@@ -45,8 +45,10 @@ slurmhub --demo
 slurmhub --host my-cluster
 ```
 
-If no config exists at `~/.config/slurmhub/config.toml`, the **first-run wizard**
-walks you through creating one.
+```{tip}
+No config? No problem — on first launch `slurmhub` opens an interactive wizard that
+collects the SSH details and writes `~/.config/slurmhub/config.toml` for you.
+```
 
 ## Documentation map
 

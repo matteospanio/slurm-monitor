@@ -16,12 +16,18 @@ two `sinfo` calls.
   - *Nodes (i/m/a/d)* — counts by state (idle / mixed / allocated / down|drain|fail).
   - *CPUs (free/total)* — `total - alloc` per partition.
   - *GPUs (used/total)* — counted from the partition's `Gres` field plus per-node
-    usage. Allocated / mixed nodes count as "all GPUs used" because `sinfo` does not
-    expose per-job GPU counts.
+    usage.
   - *Mem* — the largest `RealMemory` value seen for the partition, so heterogeneous
     partitions still show a meaningful number rather than double-counting.
   - *Up* — derived from `sinfo`'s `%a` Availability flag.
 - **Node table** — the per-node rollup, color-coded by state.
+
+```{note}
+GPU *usage* is approximate: allocated / mixed nodes count as "all GPUs used" because
+`sinfo` does not expose per-job GPU counts. For exact per-job GPU utilisation, open
+the [Job detail screen](job-detail.md) — it queries `nvidia-smi` inside the job's
+allocation.
+```
 
 ## Keybindings
 

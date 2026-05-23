@@ -11,6 +11,12 @@ modal:
 - `y` runs `scancel <jobid>` on the cluster.
 - `n` / `Esc` aborts without touching SSH.
 
+```{warning}
+`scancel` is **irreversible** — Slurm terminates the job, releases its allocation,
+and frees the GPUs / memory immediately. There is no "undo". Take a second to read
+the job name in the modal before pressing `y`.
+```
+
 ## Why a confirmation modal
 
 The selected `SlurmJob` is captured at the moment you press `c`. Even if the cursor

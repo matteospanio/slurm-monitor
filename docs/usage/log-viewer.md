@@ -6,9 +6,13 @@
 ```
 
 The viewer opens a persistent paramiko channel and runs `tail -n 50 -f <log_path>`
-on the remote host. Lines are streamed into a `RichLog` widget in chunks; the
-in-memory buffer is capped at **20 000 lines** to keep memory bounded on long-running
-jobs.
+on the remote host. Lines are streamed into a `RichLog` widget in chunks.
+
+```{note}
+The in-memory buffer is capped at **20 000 lines** to keep memory bounded on
+long-running jobs — older lines are evicted as new ones arrive. Search and yank
+operate on what's in the buffer; lines that have already been evicted won't match.
+```
 
 The header bar reflects the current mode:
 
