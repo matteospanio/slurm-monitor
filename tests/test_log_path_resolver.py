@@ -2,9 +2,9 @@
 
 import pytest
 
-from slurm_monitor.config import LogConfig
-from slurm_monitor.log_path_resolver import LogPathResolver, resolve_log_path
-from slurm_monitor.squeue_parser import SlurmJob
+from slurmhub.config import LogConfig
+from slurmhub.log_path_resolver import LogPathResolver, resolve_log_path
+from slurmhub.squeue_parser import SlurmJob
 
 
 class TestLogPathResolver:

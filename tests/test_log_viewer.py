@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slurm_monitor.config import SSHConfig
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.widgets.log_viewer import LogScreen, find_match_indices
+from slurmhub.config import SSHConfig
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.widgets.log_viewer import LogScreen, find_match_indices
 
 
 @pytest.fixture
@@ -106,7 +106,7 @@ class TestLogScreenSaveAndYank:
         screen._lines = ["first", "last line"]
 
         with patch(
-            "slurm_monitor.widgets._clipboard.copy_osc52", return_value=True
+            "slurmhub.widgets._clipboard.copy_osc52", return_value=True
         ) as mock_copy, patch.object(
             type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())
         ), patch.object(LogScreen, "notify"):

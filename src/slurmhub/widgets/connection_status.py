@@ -1,4 +1,4 @@
-"""Connection status widget for Slurm Monitor."""
+"""Connection status widget for slurmhub."""
 
 from typing import Optional
 

@@ -1,12 +1,12 @@
-"""Sphinx configuration for the slurm-monitor documentation site."""
+"""Sphinx configuration for the slurmhub documentation site."""
 
 from importlib.metadata import metadata, version
 
-_meta = metadata("slurm-monitor")
+_meta = metadata("slurmhub")
 
-project = "slurm-monitor"
+project = "slurmhub"
 author = _meta.get("Author-email", "Matteo Spanio")
-release = version("slurm-monitor")
+release = version("slurmhub")
 version = release  # short X.Y; we keep it identical to the full release tag
 copyright = "%Y, Matteo Spanio"
 
@@ -31,16 +31,16 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "scripts"]
 
 html_theme = "furo"
-html_title = f"slurm-monitor {release}"
+html_title = f"slurmhub {release}"
 html_static_path = ["_static"]
 html_theme_options = {
-    "source_repository": "https://github.com/matteospanio/slurm-monitor",
+    "source_repository": "https://github.com/matteospanio/slurmhub",
     "source_branch": "master",
     "source_directory": "docs/",
     "footer_icons": [
         {
             "name": "GitHub",
-            "url": "https://github.com/matteospanio/slurm-monitor",
+            "url": "https://github.com/matteospanio/slurmhub",
             "html": "",
             "class": "fa-brands fa-github",
         },

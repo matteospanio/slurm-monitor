@@ -1,4 +1,4 @@
-"""Configuration loader for Slurm Monitor.
+"""Configuration loader for slurmhub.
 
 Supports TOML (primary) and JSON (backward-compatible) config formats.
 Configuration is profile-based: each profile defines a cluster connection
@@ -217,8 +217,8 @@ class ConfigLoader:
     """Loader for application configuration."""
 
     DEFAULT_CONFIG_PATHS = [
-        Path.home() / ".config" / "slurm_monitor" / "config.toml",
-        Path.home() / ".config" / "slurm_monitor" / "config.json",
+        Path.home() / ".config" / "slurmhub" / "config.toml",
+        Path.home() / ".config" / "slurmhub" / "config.json",
         Path.cwd() / "config.toml",
         Path.cwd() / "config.json",
     ]

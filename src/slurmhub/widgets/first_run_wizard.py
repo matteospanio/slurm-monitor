@@ -17,8 +17,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
-from slurm_monitor.config import LogConfig, ProfileConfig, SSHConfig
-from slurm_monitor.ssh_wrapper import (
+from slurmhub.config import LogConfig, ProfileConfig, SSHConfig
+from slurmhub.ssh_wrapper import (
     SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,
@@ -152,7 +152,7 @@ class FirstRunWizardScreen(ModalScreen[Optional[ProfileConfig]]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="wizard-dialog"):
-            yield Static("Slurm Monitor — First-run setup", id="wizard-title")
+            yield Static("slurmhub — First-run setup", id="wizard-title")
             yield Static(
                 "No config found. Fill in your cluster details below. "
                 "Press [bold]Test connection[/bold] to verify, then "

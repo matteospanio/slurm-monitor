@@ -14,9 +14,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from slurm_monitor.app import SlurmMonitorApp
-from slurm_monitor.config import AppConfig, ProfileConfig, SSHConfig
-from slurm_monitor.demo_data import DEMO_HOST, DEMO_USERNAME
+from slurmhub.app import SlurmhubApp
+from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
+from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "_static" / "screenshots"
 TERMINAL_SIZE = (120, 36)
@@ -30,11 +30,11 @@ def _demo_config() -> AppConfig:
     return AppConfig(profiles={"demo": profile})
 
 
-def _new_app() -> SlurmMonitorApp:
-    return SlurmMonitorApp(config=_demo_config(), demo=True)
+def _new_app() -> SlurmhubApp:
+    return SlurmhubApp(config=_demo_config(), demo=True)
 
 
-async def _wait_until_jobs_loaded(app: SlurmMonitorApp, pilot) -> None:
+async def _wait_until_jobs_loaded(app: SlurmhubApp, pilot) -> None:
     """Wait for the demo refresh worker to finish populating the table."""
     tab = app._profile_tabs["demo"]
     for _ in range(40):  # up to ~2 seconds
@@ -44,7 +44,7 @@ async def _wait_until_jobs_loaded(app: SlurmMonitorApp, pilot) -> None:
             return
 
 
-async def _shot(app: SlurmMonitorApp, pilot, filename: str) -> None:
+async def _shot(app: SlurmhubApp, pilot, filename: str) -> None:
     target = OUT_DIR / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     app.save_screenshot(path=str(OUT_DIR), filename=filename)
@@ -117,7 +117,7 @@ async def shot_help_screen() -> None:
 async def shot_first_run_wizard() -> None:
     """Render the wizard as a stand-alone modal — same code path as on first run."""
     from textual.app import App, ComposeResult
-    from slurm_monitor.widgets.first_run_wizard import FirstRunWizardScreen
+    from slurmhub.widgets.first_run_wizard import FirstRunWizardScreen
 
     class WizardHost(App):
         CSS = ""

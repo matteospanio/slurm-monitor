@@ -1,6 +1,6 @@
 """Hand-crafted fixture data for the ``--demo`` flag.
 
-Used by :class:`slurm_monitor.ssh_wrapper.DemoSSHClient` to drive the TUI
+Used by :class:`slurmhub.ssh_wrapper.DemoSSHClient` to drive the TUI
 without an SSH connection. The data mirrors the wire format the real
 Slurm commands emit, so the existing parsers consume it unmodified.
 """

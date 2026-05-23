@@ -2,8 +2,8 @@
 
 from typing import Optional
 
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob
 
 
 def parse_sacct_line(line: str) -> Optional[SlurmJob]:

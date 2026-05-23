@@ -3,9 +3,9 @@
 import re
 from typing import Optional
 
-from slurm_monitor.sacct_parser import fetch_sacct_jobs
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.squeue_parser import SlurmJob, fetch_squeue_jobs
+from slurmhub.sacct_parser import fetch_sacct_jobs
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob, fetch_squeue_jobs
 
 
 class JobAggregator:

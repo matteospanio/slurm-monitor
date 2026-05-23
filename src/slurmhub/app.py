@@ -1,4 +1,4 @@
-"""Main TUI application for Slurm Monitor."""
+"""Main TUI application for slurmhub."""
 
 import time
 from dataclasses import dataclass, field
@@ -10,41 +10,41 @@ from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState
 
-from slurm_monitor.config import AppConfig, ConfigLoader, ProfileConfig
-from slurm_monitor.job_aggregator import (
+from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
+from slurmhub.job_aggregator import (
     JobAggregator,
     filter_jobs_by_state,
     sort_jobs_by_time,
 )
-from slurm_monitor.log_path_resolver import LogPathResolver
-from slurm_monitor.queue_stats import (
+from slurmhub.log_path_resolver import LogPathResolver
+from slurmhub.queue_stats import (
     ClusterQueueStats,
     compute_queue_ranks,
     fetch_cluster_queue_stats,
     fetch_pending_details,
 )
-from slurm_monitor.sinfo_parser import (
+from slurmhub.sinfo_parser import (
     ClusterCapacity,
     NodeStats,
     PartitionStats,
     fetch_sinfo,
 )
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import (
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import (
     DemoSSHClient,
     SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,
     SSHTimeoutError,
 )
-from slurm_monitor.widgets.cluster_dashboard import ClusterDashboardScreen
-from slurm_monitor.widgets.cluster_status import ClusterStatus
-from slurm_monitor.widgets.connection_status import ConnectionStatus
-from slurm_monitor.widgets.filter_bar import FilterBar
-from slurm_monitor.widgets.job_detail import JobDetail
-from slurm_monitor.widgets.job_detail_screen import JobDetailScreen
-from slurm_monitor.widgets.job_table import JobTable
-from slurm_monitor.widgets.status_bar import StatusBar
+from slurmhub.widgets.cluster_dashboard import ClusterDashboardScreen
+from slurmhub.widgets.cluster_status import ClusterStatus
+from slurmhub.widgets.connection_status import ConnectionStatus
+from slurmhub.widgets.filter_bar import FilterBar
+from slurmhub.widgets.job_detail import JobDetail
+from slurmhub.widgets.job_detail_screen import JobDetailScreen
+from slurmhub.widgets.job_table import JobTable
+from slurmhub.widgets.status_bar import StatusBar
 
 SINFO_REFRESH_SECONDS = 60.0
 PARTIAL_WARN_INTERVAL = 300.0  # 5 minutes between repeated partial-fetch warnings
@@ -108,7 +108,7 @@ class ProfileTab:
 CSS_PATH = Path(__file__).parent / "app.tcss"
 
 
-class SlurmMonitorApp(App):
+class SlurmhubApp(App):
     """Slurm job monitoring TUI application."""
 
     CSS_PATH = "app.tcss"
@@ -174,7 +174,7 @@ class SlurmMonitorApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = "Slurm Job Monitor"
+        self.title = "slurmhub"
 
         for name, tab in self._profile_tabs.items():
             status = self.query_one(f"#status-{name}", ConnectionStatus)
@@ -235,8 +235,8 @@ class SlurmMonitorApp(App):
         Returns:
             FetchResult with jobs, queue stats, and optional error.
         """
-        from slurm_monitor.squeue_parser import fetch_squeue_jobs
-        from slurm_monitor.sacct_parser import fetch_sacct_jobs
+        from slurmhub.squeue_parser import fetch_squeue_jobs
+        from slurmhub.sacct_parser import fetch_sacct_jobs
 
         try:
             # Always fetch squeue (active jobs)
@@ -255,7 +255,7 @@ class SlurmMonitorApp(App):
             else:
                 historical_jobs = tab._sacct_cache
 
-            from slurm_monitor.job_aggregator import merge_jobs
+            from slurmhub.job_aggregator import merge_jobs
 
             merged = merge_jobs(active_jobs, historical_jobs)
 
@@ -373,7 +373,7 @@ class SlurmMonitorApp(App):
                     and tab._auth_attempts < 3
                 ):
                     tab._auth_prompted = True
-                    from slurm_monitor.widgets.password_prompt import (
+                    from slurmhub.widgets.password_prompt import (
                         PasswordPromptScreen,
                     )
 
@@ -585,7 +585,7 @@ class SlurmMonitorApp(App):
 
     def action_help(self) -> None:
         """Open the modal keybinding cheatsheet for the main view."""
-        from slurm_monitor.widgets.help_screen import HelpScreen
+        from slurmhub.widgets.help_screen import HelpScreen
 
         self.push_screen(HelpScreen(context="main"))
 
@@ -785,7 +785,7 @@ class SlurmMonitorApp(App):
             )
             return
 
-        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+        from slurmhub.widgets.confirm_screen import ConfirmScreen
 
         msg = f"Cancel job {target.job_id} ({target.name})?"
         self.push_screen(
@@ -829,7 +829,7 @@ class SlurmMonitorApp(App):
 
     def action_yank_job_id(self) -> None:
         """Copy the selected job's ID to the system clipboard via OSC 52."""
-        from slurm_monitor.widgets._clipboard import copy_osc52
+        from slurmhub.widgets._clipboard import copy_osc52
 
         name = self._get_active_profile_name()
         tab = self._profile_tabs.get(name)

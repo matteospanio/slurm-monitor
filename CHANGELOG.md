@@ -28,12 +28,12 @@ First official public release.
 
 ### Added
 
-- `--demo` CLI flag (`slurm-monitor --demo`) that launches the app against a
+- `--demo` CLI flag (`slurmhub --demo`) that launches the app against a
   built-in fixture dataset — useful for demos, tutorials, and generating
   documentation screenshots without a live Slurm cluster.
-- `slurm_monitor.demo_data` module with hand-crafted fixture outputs for `squeue`,
+- `slurmhub.demo_data` module with hand-crafted fixture outputs for `squeue`,
   `sacct`, `scontrol`, `sinfo`, `sstat`, and `tail` of log files.
-- `DemoSSHClient` (in `slurm_monitor.ssh_wrapper`) which implements the
+- `DemoSSHClient` (in `slurmhub.ssh_wrapper`) which implements the
   `SSHClient` interface against fixture data.
 - `SSHClient.stream_command()` method extracted from the log viewer so streaming
   commands can be intercepted cleanly by `DemoSSHClient` and by future tests.
@@ -60,7 +60,7 @@ First official public release.
 ### Added
 
 - **Cluster dashboard screen** (`d` key). Full-screen view with cluster-wide CPU/GPU/memory bars, a partition summary table (nodes idle/mixed/alloc/down, CPUs free/total, GPUs used/total, memory total, up/down state), and a scrollable per-node table (state, CPU allocation, free/total memory, GPU usage, reason). Refreshes via `sinfo` every 60 s in the background and on demand with `r`. Supports `j`/`k`/`g`/`G` for scrolling and `Esc`/`q` to return.
-- **First-run setup wizard**. When no config file exists under the default search path, an interactive `ModalScreen` collects profile name, SSH host, username, port, key path, and log pattern, optionally tests the connection via `SSHClient.check_connection`, and writes `~/.config/slurm_monitor/config.toml` via `ConfigLoader.save_toml`. Includes an "Add another cluster?" confirmation so multiple profiles can be set up in one session. Passing `--config` or `--host` skips the wizard.
+- **First-run setup wizard**. When no config file exists under the default search path, an interactive `ModalScreen` collects profile name, SSH host, username, port, key path, and log pattern, optionally tests the connection via `SSHClient.check_connection`, and writes `~/.config/slurmhub/config.toml` via `ConfigLoader.save_toml`. Includes an "Add another cluster?" confirmation so multiple profiles can be set up in one session. Passing `--config` or `--host` skips the wizard.
 - `ConfigLoader.locate()` — returns `(path, found)` for the resolved config path without touching the silent default-profile fallback. Lets the CLI decide whether to launch the wizard.
 - `sinfo_parser` module with `PartitionStats`, `NodeStats`, `ClusterCapacity` dataclasses and a `fetch_sinfo(client)` helper that issues two pipe-delimited `sinfo` calls and stitches the results.
 - Shared `widgets/_bars.py` rendering helper (extracted from the job detail screen) reused by the dashboard.
@@ -181,7 +181,7 @@ First official public release.
 - 29 unit tests for sacct parser covering various states and edge cases.
 - 28 unit tests for job aggregator covering merge logic and utilities.
 - TUI application (`app.py`) built with Textual framework.
-- `SlurmMonitorApp` main application class with reactive UI.
+- `SlurmhubApp` main application class with reactive UI.
 - `ConnectionStatus` widget displaying host, status, and last update time.
 - `JobTable` custom DataTable with color-coded job states.
 - Automatic data refresh with configurable interval.

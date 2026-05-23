@@ -20,14 +20,14 @@ single step.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Clone the repo
-git clone https://github.com/matteospanio/slurm-monitor.git
-cd slurm-monitor
+git clone https://github.com/matteospanio/slurmhub.git
+cd slurmhub
 
 # 3. Install dependencies (creates .venv from uv.lock)
 uv sync
 
 # 4. Run the app
-uv run slurm-monitor
+uv run slurmhub
 ```
 
 `uv sync` reads `pyproject.toml` and pins from `uv.lock`. It installs:
@@ -39,21 +39,21 @@ uv run slurm-monitor
 
 ## Installing globally
 
-If you would rather expose the `slurm-monitor` command on your `$PATH` without going
+If you would rather expose the `slurmhub` command on your `$PATH` without going
 through `uv run`:
 
 ```bash
 uv tool install .
-slurm-monitor --help
+slurmhub --help
 ```
 
 ## Verifying the installation
 
 ```bash
-$ slurm-monitor --help
-Usage: slurm-monitor [OPTIONS]
+$ slurmhub --help
+Usage: slurmhub [OPTIONS]
 
-  Slurm Monitor - TUI application for monitoring Slurm jobs.
+  slurmhub - TUI application for monitoring Slurm jobs.
 
 Options:
   --config PATH        Path to configuration file (.toml or .json).
@@ -70,7 +70,7 @@ Options:
 explore the interface before configuring SSH:
 
 ```bash
-slurm-monitor --demo
+slurmhub --demo
 ```
 
 See [Quickstart](quickstart.md) for the next step.

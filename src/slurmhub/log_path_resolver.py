@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from slurm_monitor.config import LogConfig, ProfileConfig
+from slurmhub.config import LogConfig, ProfileConfig
 
 
 class LogPathResolver:

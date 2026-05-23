@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from slurm_monitor import cli
-from slurm_monitor.config import (
+from slurmhub import cli
+from slurmhub.config import (
     AppConfig,
     ConfigLoader,
     LogConfig,
@@ -67,7 +67,7 @@ class TestCliWizardWiring:
 
     def test_no_config_triggers_wizard_then_runs_app(self, monkeypatch, tmp_path):
         """When no config exists, wizard is invoked and the resulting config
-        is passed to SlurmMonitorApp.run()."""
+        is passed to SlurmhubApp.run()."""
         # Force `locate` to report "not found"
         target = tmp_path / "config.toml"
         monkeypatch.setattr(
@@ -79,7 +79,7 @@ class TestCliWizardWiring:
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
 
         app_mock = MagicMock()
-        with patch("slurm_monitor.app.SlurmMonitorApp", return_value=app_mock) as ctor:
+        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code == 0, result.output
@@ -97,7 +97,7 @@ class TestCliWizardWiring:
         monkeypatch.setattr(
             cli, "run_first_run_wizard", lambda p: None
         )
-        with patch("slurm_monitor.app.SlurmMonitorApp") as ctor:
+        with patch("slurmhub.app.SlurmhubApp") as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code != 0
@@ -113,7 +113,7 @@ class TestCliWizardWiring:
         wizard_mock = MagicMock()
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
         app_mock = MagicMock()
-        with patch("slurm_monitor.app.SlurmMonitorApp", return_value=app_mock):
+        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock):
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code == 0, result.output
@@ -130,7 +130,7 @@ class TestCliWizardWiring:
         wizard_mock = MagicMock()
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
         app_mock = MagicMock()
-        with patch("slurm_monitor.app.SlurmMonitorApp", return_value=app_mock) as ctor:
+        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, ["--host", "manualhost"])
             assert result.exit_code == 0, result.output

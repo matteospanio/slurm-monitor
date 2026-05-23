@@ -1,4 +1,4 @@
-# Slurm Monitor Configuration
+# slurmhub Configuration
 #
 # This file defines global defaults and per-cluster profiles.
 # Each profile inherits from [defaults] and can override any setting.

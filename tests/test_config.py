@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from slurm_monitor.config import (
+from slurmhub.config import (
     AppConfig,
     ConfigLoader,
     LogConfig,
@@ -439,7 +439,7 @@ ssh_timeout = 60
 
     def test_get_default_config_path(self):
         path = ConfigLoader.get_default_config_path()
-        assert path == Path.home() / ".config" / "slurm_monitor" / "config.toml"
+        assert path == Path.home() / ".config" / "slurmhub" / "config.toml"
         assert isinstance(path, Path)
 
     def test_default_paths_include_toml_and_json(self):

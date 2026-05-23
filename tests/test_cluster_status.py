@@ -1,8 +1,8 @@
 """Tests for the ClusterStatus widget (queue totals + capacity strip)."""
 
-from slurm_monitor.queue_stats import ClusterQueueStats
-from slurm_monitor.sinfo_parser import ClusterCapacity
-from slurm_monitor.widgets.cluster_status import ClusterStatus, _format_mem_mb
+from slurmhub.queue_stats import ClusterQueueStats
+from slurmhub.sinfo_parser import ClusterCapacity
+from slurmhub.widgets.cluster_status import ClusterStatus, _format_mem_mb
 
 
 class TestFormatMemMb:

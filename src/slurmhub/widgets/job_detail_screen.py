@@ -9,11 +9,11 @@ from textual.containers import ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
-from slurm_monitor.scontrol_parser import JobDetails, fetch_job_details
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.widgets._bars import render_bar as _render_bar
-from slurm_monitor.widgets.log_viewer import LogScreen
+from slurmhub.scontrol_parser import JobDetails, fetch_job_details
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.widgets._bars import render_bar as _render_bar
+from slurmhub.widgets.log_viewer import LogScreen
 
 _SEPARATOR = "\u2500" * 40
 
@@ -258,7 +258,7 @@ class JobDetailScreen(Screen):
         self.app.pop_screen()
 
     def action_help(self) -> None:
-        from slurm_monitor.widgets.help_screen import HelpScreen
+        from slurmhub.widgets.help_screen import HelpScreen
 
         self.app.push_screen(HelpScreen(context="detail"))
 
@@ -281,7 +281,7 @@ class JobDetailScreen(Screen):
 
     def action_view_script(self) -> None:
         """Open the read-only batch-script viewer for this job."""
-        from slurm_monitor.widgets.batch_script_screen import BatchScriptScreen
+        from slurmhub.widgets.batch_script_screen import BatchScriptScreen
 
         self.app.push_screen(
             BatchScriptScreen(self.job, self.ssh_client, self.ssh_timeout)
@@ -300,7 +300,7 @@ class JobDetailScreen(Screen):
             )
             return
 
-        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+        from slurmhub.widgets.confirm_screen import ConfirmScreen
 
         msg = f"Cancel job {target.job_id} ({target.name})?"
         self.app.push_screen(
@@ -333,7 +333,7 @@ class JobDetailScreen(Screen):
 
     def action_yank(self) -> None:
         """Copy a job-related value to the clipboard. Cycles through targets."""
-        from slurm_monitor.widgets._clipboard import copy_osc52
+        from slurmhub.widgets._clipboard import copy_osc52
 
         targets = self._yank_targets()
         if not targets:

@@ -1,4 +1,4 @@
-"""Command-line interface for Slurm Monitor."""
+"""Command-line interface for slurmhub."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from typing import Optional
 
 import click
 
-from slurm_monitor.config import AppConfig, ConfigLoader, ProfileConfig
+from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
 
 
 def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
@@ -17,7 +17,7 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     """
     from textual.app import App, ComposeResult
 
-    from slurm_monitor.widgets.first_run_wizard import (
+    from slurmhub.widgets.first_run_wizard import (
         ConfirmScreen,
         FirstRunWizardScreen,
     )
@@ -120,30 +120,30 @@ def main(
     list_profiles: bool,
     demo: bool,
 ) -> None:
-    """Slurm Monitor - TUI application for monitoring Slurm jobs."""
-    from slurm_monitor.app import SlurmMonitorApp
+    """slurmhub - TUI application for monitoring Slurm jobs."""
+    from slurmhub.app import SlurmhubApp
 
     # Demo mode: synthesize a single-profile config pointing at the
     # built-in fixture host and skip SSH/wizard entirely.
     if demo:
-        from slurm_monitor.config import ProfileConfig as _ProfileConfig
-        from slurm_monitor.config import SSHConfig
-        from slurm_monitor.demo_data import DEMO_HOST, DEMO_USERNAME
+        from slurmhub.config import ProfileConfig as _ProfileConfig
+        from slurmhub.config import SSHConfig
+        from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
 
         profile = _ProfileConfig(
             name="demo",
             ssh=SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME),
         )
         app_config = AppConfig(profiles={"demo": profile})
-        app = SlurmMonitorApp(app_config, demo=True)
+        app = SlurmhubApp(app_config, demo=True)
         app.run()
         return
 
     # When the user supplied --host or --config, skip the wizard entirely:
     # they are explicitly telling us how to connect.
     if host:
-        from slurm_monitor.config import ProfileConfig as _ProfileConfig
-        from slurm_monitor.config import SSHConfig
+        from slurmhub.config import ProfileConfig as _ProfileConfig
+        from slurmhub.config import SSHConfig
 
         profile = _ProfileConfig(name="default", ssh=SSHConfig(host=host))
         app_config = AppConfig(profiles={"default": profile})
@@ -184,5 +184,5 @@ def main(
             raise click.ClickException(str(e)) from e
         app_config = AppConfig(profiles={profile_name: profile})
 
-    app = SlurmMonitorApp(app_config)
+    app = SlurmhubApp(app_config)
     app.run()

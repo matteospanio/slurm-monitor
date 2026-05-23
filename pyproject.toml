@@ -1,5 +1,5 @@
 [project]
-name = "slurm-monitor"
+name = "slurmhub"
 version = "1.0.0"
 description = "A terminal UI for monitoring Slurm jobs in real-time over SSH"
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-slurm-monitor = "slurm_monitor.cli:main"
+slurmhub = "slurmhub.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

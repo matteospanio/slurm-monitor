@@ -1,10 +1,10 @@
-"""Job table widget for Slurm Monitor."""
+"""Job table widget for slurmhub."""
 
 from rich.text import Text
 from textual.widgets import DataTable
 
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.widgets._utils import truncate_path as _truncate_path
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.widgets._utils import truncate_path as _truncate_path
 
 __all__ = ["JobTable", "_truncate_path"]
 

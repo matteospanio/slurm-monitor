@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from slurm_monitor.queue_stats import (
+from slurmhub.queue_stats import (
     ClusterQueueStats,
     PendingInfo,
     compute_queue_ranks,

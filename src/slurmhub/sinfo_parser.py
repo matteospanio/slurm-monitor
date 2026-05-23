@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.ssh_wrapper import SSHClient
 
 # Slurm appends one of these characters to a state to signal additional info
 # (e.g. ``mixed*`` = mixed + non-responding). Strip them before matching.

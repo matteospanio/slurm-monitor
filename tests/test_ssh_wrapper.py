@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, mock_open, patch, PropertyMock
 import paramiko
 import pytest
 
-from slurm_monitor.config import SSHConfig
-from slurm_monitor.ssh_wrapper import (
+from slurmhub.config import SSHConfig
+from slurmhub.ssh_wrapper import (
     SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,

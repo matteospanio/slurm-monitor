@@ -1,12 +1,12 @@
-"""Job detail panel widget for Slurm Monitor (bottom bar in main view)."""
+"""Job detail panel widget for slurmhub (bottom bar in main view)."""
 
 from typing import Optional
 
 from rich.text import Text
 from textual.widgets import Static
 
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.widgets._utils import truncate_path
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.widgets._utils import truncate_path
 
 
 class JobDetail(Static):

@@ -1,13 +1,13 @@
-"""Cluster-wide queue status widget for Slurm Monitor."""
+"""Cluster-wide queue status widget for slurmhub."""
 
 from typing import Optional
 
 from rich.text import Text
 from textual.widgets import Static
 
-from slurm_monitor.queue_stats import ClusterQueueStats
-from slurm_monitor.scontrol_parser import format_mem_human
-from slurm_monitor.sinfo_parser import ClusterCapacity
+from slurmhub.queue_stats import ClusterQueueStats
+from slurmhub.scontrol_parser import format_mem_human
+from slurmhub.sinfo_parser import ClusterCapacity
 
 
 def _format_mem_mb(mb: int) -> str:

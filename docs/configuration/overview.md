@@ -2,11 +2,11 @@
 
 ## File location and format
 
-`slurm-monitor` looks for a configuration file in the following order; the first
+`slurmhub` looks for a configuration file in the following order; the first
 existing file wins:
 
-1. `~/.config/slurm_monitor/config.toml` *(preferred — written by the wizard)*
-2. `~/.config/slurm_monitor/config.json` *(legacy)*
+1. `~/.config/slurmhub/config.toml` *(preferred — written by the wizard)*
+2. `~/.config/slurmhub/config.json` *(legacy)*
 3. `./config.toml` *(working directory)*
 4. `./config.json`
 

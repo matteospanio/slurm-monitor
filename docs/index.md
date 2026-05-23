@@ -1,4 +1,4 @@
-# slurm-monitor
+# slurmhub
 
 A keyboard-driven terminal UI for monitoring [Slurm](https://slurm.schedmd.com/) jobs in
 real time over SSH. It runs the standard Slurm command-line tools (`squeue`, `sacct`,
@@ -7,7 +7,7 @@ parses the output, and presents the result as a rich dashboard built with
 [Textual](https://textual.textualize.io/).
 
 ```{image} _static/screenshots/01_main_job_table.svg
-:alt: slurm-monitor main job table
+:alt: slurmhub main job table
 :width: 100%
 ```
 
@@ -27,7 +27,7 @@ Cluster-wide capacity bars (CPU, GPU, memory), partition summary, and per-node
 table fed by `sinfo`.
 :::
 :::{grid-item-card} Multi-cluster tabs
-Configure several clusters in `~/.config/slurm_monitor/config.toml` and switch
+Configure several clusters in `~/.config/slurmhub/config.toml` and switch
 between them with `h` / `l`. Filter, search and sort state is remembered per tab.
 :::
 ::::
@@ -36,16 +36,16 @@ between them with `h` / `l`. Filter, search and sort state is remembered per tab
 
 ```bash
 # Install
-uv tool install slurm-monitor
+uv tool install slurmhub
 
 # Try it without an SSH connection — the --demo flag uses built-in fixture data
-slurm-monitor --demo
+slurmhub --demo
 
 # Run against your cluster
-slurm-monitor --host my-cluster
+slurmhub --host my-cluster
 ```
 
-If no config exists at `~/.config/slurm_monitor/config.toml`, the **first-run wizard**
+If no config exists at `~/.config/slurmhub/config.toml`, the **first-run wizard**
 walks you through creating one.
 
 ## Documentation map

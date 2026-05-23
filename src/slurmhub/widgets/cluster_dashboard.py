@@ -15,15 +15,15 @@ from textual.containers import ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Static
 
-from slurm_monitor.scontrol_parser import format_mem_human
-from slurm_monitor.sinfo_parser import (
+from slurmhub.scontrol_parser import format_mem_human
+from slurmhub.sinfo_parser import (
     ClusterCapacity,
     NodeStats,
     PartitionStats,
     fetch_sinfo,
 )
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.widgets._bars import render_bar
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.widgets._bars import render_bar
 
 # How long cached sinfo data is considered fresh enough to skip a fetch.
 SINFO_REFRESH_SECONDS = 60.0
@@ -214,7 +214,7 @@ class ClusterDashboardScreen(Screen):
 
         # Also stash the freshly fetched data back on the owning ProfileTab
         # so re-opening the screen is instant. ``app`` is the main
-        # SlurmMonitorApp; look up the tab by profile name.
+        # SlurmhubApp; look up the tab by profile name.
         tab = getattr(self.app, "_profile_tabs", {}).get(self.profile_name)
         if tab is not None:
             import time
@@ -232,7 +232,7 @@ class ClusterDashboardScreen(Screen):
         self._kick_refresh()
 
     def action_help(self) -> None:
-        from slurm_monitor.widgets.help_screen import HelpScreen
+        from slurmhub.widgets.help_screen import HelpScreen
 
         self.app.push_screen(HelpScreen(context="dashboard"))
 

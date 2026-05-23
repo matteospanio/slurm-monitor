@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 import paramiko
 
-from slurm_monitor.config import SSHConfig
+from slurmhub.config import SSHConfig
 
 
 class SSHConnectionError(Exception):
@@ -365,12 +365,12 @@ class DemoSSHClient(SSHClient):
     Used by the ``--demo`` CLI flag so the TUI can be exercised (and the
     documentation screenshots regenerated) without a live Slurm cluster.
     Every command the app issues is matched by prefix and answered from
-    :mod:`slurm_monitor.demo_data`.
+    :mod:`slurmhub.demo_data`.
     """
 
     def __init__(self, config: Optional[SSHConfig] = None):
         if config is None:
-            from slurm_monitor.demo_data import DEMO_HOST, DEMO_USERNAME
+            from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
             config = SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME)
         super().__init__(config)
 
@@ -393,7 +393,7 @@ class DemoSSHClient(SSHClient):
         return True
 
     def execute(self, command: str, timeout: int = 10) -> str:
-        from slurm_monitor import demo_data
+        from slurmhub import demo_data
 
         cmd = command.strip()
 
@@ -470,7 +470,7 @@ class DemoSSHClient(SSHClient):
         poll_interval: float = 0.1,
     ) -> None:
         """Replay canned log content for ``tail -f <path>`` commands."""
-        from slurm_monitor import demo_data
+        from slurmhub import demo_data
 
         cmd = command.strip()
         # Expected form: ``tail -n 50 -f /path/to/log``

@@ -45,14 +45,14 @@ switching:
 ## Running a subset of configured profiles
 
 ```bash
-slurm-monitor --profile dei            # only the 'dei' profile
-slurm-monitor --list-profiles          # list and exit
+slurmhub --profile dei            # only the 'dei' profile
+slurmhub --list-profiles          # list and exit
 ```
 
 ## Ad-hoc profile without a config
 
 ```bash
-slurm-monitor --host login.cluster.example.org
+slurmhub --host login.cluster.example.org
 ```
 
 This creates an in-memory profile named `default` and starts the app against it. No

@@ -1,4 +1,4 @@
-"""Log viewer screen for Slurm Monitor.
+"""Log viewer screen for slurmhub.
 
 Displays remote log output inside the TUI using a RichLog widget,
 streaming lines via paramiko instead of suspending to a shell.
@@ -13,8 +13,8 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog, Static
 
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
 
 
 class LogHeader(Static):
@@ -204,7 +204,7 @@ class LogScreen(Screen):
         self._stop_stream = True
 
     def action_help(self) -> None:
-        from slurm_monitor.widgets.help_screen import HelpScreen
+        from slurmhub.widgets.help_screen import HelpScreen
 
         self.app.push_screen(HelpScreen(context="log"))
 
@@ -299,7 +299,7 @@ class LogScreen(Screen):
         self.notify(f"Saved log to {path}", timeout=3)
 
     def action_yank_line(self) -> None:
-        from slurm_monitor.widgets._clipboard import copy_osc52
+        from slurmhub.widgets._clipboard import copy_osc52
 
         text = self._current_match_text
         if not text and self._lines:

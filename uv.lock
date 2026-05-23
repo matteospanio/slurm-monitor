@@ -735,7 +735,7 @@ wheels = [
 ]
 
 [[package]]
-name = "slurm-monitor"
+name = "slurmhub"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

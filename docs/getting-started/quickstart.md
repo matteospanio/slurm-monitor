@@ -1,26 +1,26 @@
 # Quickstart
 
 This page walks you from a fresh install to a working dashboard against your own
-cluster. If you haven't installed `slurm-monitor` yet, see
+cluster. If you haven't installed `slurmhub` yet, see
 [Installation](installation.md) first.
 
 ## Launch the app
 
 ```bash
 # All configured profiles (default)
-slurm-monitor
+slurmhub
 
 # Just one profile
-slurm-monitor --profile dei
+slurmhub --profile dei
 
 # Ad-hoc connection without a config file
-slurm-monitor --host login.cluster.example.org
+slurmhub --host login.cluster.example.org
 
 # List what's configured and exit
-slurm-monitor --list-profiles
+slurmhub --list-profiles
 
 # Boot the TUI against built-in fixture data (no SSH)
-slurm-monitor --demo
+slurmhub --demo
 ```
 
 ## First-run wizard
@@ -36,7 +36,7 @@ automatically:
 
 - **Test connection** runs `echo "success"` over SSH and reports the result.
 - **Save and continue** writes the profile to
-  `~/.config/slurm_monitor/config.toml` and asks whether to add another cluster.
+  `~/.config/slurmhub/config.toml` and asks whether to add another cluster.
 - **Cancel** / `Esc` aborts without writing anything.
 
 You can re-trigger the wizard at any time by deleting the config file (or pointing

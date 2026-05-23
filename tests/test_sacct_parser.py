@@ -4,15 +4,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from slurm_monitor.config import SSHConfig
-from slurm_monitor.sacct_parser import (
+from slurmhub.config import SSHConfig
+from slurmhub.sacct_parser import (
     fetch_sacct_jobs,
     jobs_to_dict_list,
     parse_sacct_line,
     parse_sacct_output,
 )
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
 
 
 @pytest.fixture

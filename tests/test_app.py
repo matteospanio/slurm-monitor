@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slurm_monitor.app import FetchResult, ProfileTab, SlurmMonitorApp
-from slurm_monitor.config import AppConfig, ProfileConfig, SSHConfig, LogConfig
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHConnectionError, SSHTimeoutError
-from slurm_monitor.widgets.job_detail import JobDetail
-from slurm_monitor.widgets.job_table import JobTable
+from slurmhub.app import FetchResult, ProfileTab, SlurmhubApp
+from slurmhub.config import AppConfig, ProfileConfig, SSHConfig, LogConfig
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHConnectionError, SSHTimeoutError
+from slurmhub.widgets.job_detail import JobDetail
+from slurmhub.widgets.job_table import JobTable
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def app_config():
 
 @pytest.fixture
 def app(app_config):
-    return SlurmMonitorApp(config=app_config)
+    return SlurmhubApp(config=app_config)
 
 
 class TestFetchJobsErrorHandling:
@@ -33,7 +33,7 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs",
+            "slurmhub.squeue_parser.fetch_squeue_jobs",
             side_effect=SSHConnectionError("Connection refused"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -46,7 +46,7 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs",
+            "slurmhub.squeue_parser.fetch_squeue_jobs",
             side_effect=SSHTimeoutError("Timed out"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -59,9 +59,9 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
         ):
             result = app._fetch_jobs(tab, "test")
 
@@ -75,9 +75,9 @@ class TestFetchJobsErrorHandling:
         tab._sacct_last_fetch = 0.0  # force sacct re-fetch
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.sacct_parser.fetch_sacct_jobs",
+            "slurmhub.sacct_parser.fetch_sacct_jobs",
             side_effect=SSHConnectionError("Connection lost"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -108,7 +108,7 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_g_moves_cursor_to_first_row(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job(str(i)) for i in range(5)]
@@ -126,7 +126,7 @@ class TestVimNavigation:
     async def test_shift_g_moves_cursor_to_last_row(self):
         """Real terminals deliver Shift+G as the literal "G" key — the
         binding must match that form, not just "shift+g"."""
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job(str(i)) for i in range(5)]
@@ -145,7 +145,7 @@ class TestVimNavigation:
     @pytest.mark.asyncio
     async def test_shift_plus_g_alias_also_works(self):
         """The synthetic "shift+g" form should also map to scroll_bottom."""
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job(str(i)) for i in range(5)]
@@ -159,7 +159,7 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_j_k_move_cursor_one_row(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job(str(i)) for i in range(3)]
@@ -180,14 +180,14 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_g_with_empty_table_does_not_crash(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             await pilot.press("g")
             await pilot.press("G")
 
     @pytest.mark.asyncio
     async def test_l_switches_to_next_tab(self):
-        app = SlurmMonitorApp(config=_multi_profile_config())
+        app = SlurmhubApp(config=_multi_profile_config())
         async with app.run_test() as pilot:
             assert app._get_active_profile_name() == "alpha"
 
@@ -203,7 +203,7 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_h_switches_to_previous_tab(self):
-        app = SlurmMonitorApp(config=_multi_profile_config())
+        app = SlurmhubApp(config=_multi_profile_config())
         async with app.run_test() as pilot:
             assert app._get_active_profile_name() == "alpha"
 
@@ -220,7 +220,7 @@ class TestVimNavigation:
     @pytest.mark.asyncio
     async def test_detail_panel_populated_on_initial_render(self):
         """Detail panel should show the row-0 job even without cursor move."""
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job("42", name="alpha"), _make_job("43")]
@@ -235,7 +235,7 @@ class TestVimNavigation:
     @pytest.mark.asyncio
     async def test_detail_panel_shows_empty_message_when_no_jobs(self):
         """With no jobs, the panel should reflect that, not 'No job selected'."""
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = []
@@ -250,7 +250,7 @@ class TestVimNavigation:
 
     @pytest.mark.asyncio
     async def test_h_l_no_op_with_single_profile(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             assert app._get_active_profile_name() == "clusterA"
             await pilot.press("l")
@@ -264,7 +264,7 @@ class TestScancelAction:
 
     @pytest.mark.asyncio
     async def test_c_with_no_jobs_notifies(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = []
@@ -279,9 +279,9 @@ class TestScancelAction:
 
     @pytest.mark.asyncio
     async def test_c_opens_confirm_screen(self):
-        from slurm_monitor.widgets.confirm_screen import ConfirmScreen
+        from slurmhub.widgets.confirm_screen import ConfirmScreen
 
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job("100")]
@@ -294,7 +294,7 @@ class TestScancelAction:
 
     @pytest.mark.asyncio
     async def test_c_y_triggers_scancel(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job("100")]
@@ -318,7 +318,7 @@ class TestScancelAction:
 
     @pytest.mark.asyncio
     async def test_c_n_does_not_call_scancel(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [_make_job("100")]
@@ -343,11 +343,11 @@ class TestPartialFetchErrors:
         tab._sinfo_last_fetch = 0.0  # force a sinfo fetch attempt
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.app.fetch_sinfo",
+            "slurmhub.app.fetch_sinfo",
             side_effect=RuntimeError("sinfo unavailable"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -361,11 +361,11 @@ class TestPartialFetchErrors:
         tab._queue_stats_last_fetch = 0.0
 
         with patch(
-            "slurm_monitor.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
         ), patch(
-            "slurm_monitor.app.fetch_cluster_queue_stats",
+            "slurmhub.app.fetch_cluster_queue_stats",
             side_effect=RuntimeError("network blip"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -379,9 +379,9 @@ class TestFilterBarUX:
 
     @pytest.mark.asyncio
     async def test_slash_then_escape_clears_filter(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
-            from slurm_monitor.widgets.filter_bar import FilterBar
+            from slurmhub.widgets.filter_bar import FilterBar
             from textual.widgets import Input
 
             await pilot.press("slash")
@@ -404,7 +404,7 @@ class TestFilterBarUX:
 
     @pytest.mark.asyncio
     async def test_status_bar_shows_visible_count_when_filtered(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.jobs = [
@@ -417,7 +417,7 @@ class TestFilterBarUX:
             app._update_display("clusterA")
             await pilot.pause()
 
-            from slurm_monitor.widgets.status_bar import StatusBar
+            from slurmhub.widgets.status_bar import StatusBar
             sb = app.query_one("#status-bar", StatusBar)
             rendered = str(sb.render())
             assert "2 of 3 shown" in rendered
@@ -428,7 +428,7 @@ class TestPerTabFilterIsolation:
 
     @pytest.mark.asyncio
     async def test_state_filter_isolated_per_tab(self):
-        app = SlurmMonitorApp(config=_multi_profile_config())
+        app = SlurmhubApp(config=_multi_profile_config())
         async with app.run_test() as pilot:
             # Start on alpha; press 1 to filter RUNNING
             assert app._get_active_profile_name() == "alpha"
@@ -453,7 +453,7 @@ class TestPerTabFilterIsolation:
 
     @pytest.mark.asyncio
     async def test_sort_mode_isolated_per_tab(self):
-        app = SlurmMonitorApp(config=_multi_profile_config())
+        app = SlurmhubApp(config=_multi_profile_config())
         async with app.run_test() as pilot:
             await pilot.press("s")  # alpha → time
             assert app._profile_tabs["alpha"].sort_mode == "time"
@@ -470,7 +470,7 @@ class TestPerTabFilterIsolation:
 
     @pytest.mark.asyncio
     async def test_name_filter_isolated_per_tab(self):
-        app = SlurmMonitorApp(config=_multi_profile_config())
+        app = SlurmhubApp(config=_multi_profile_config())
         async with app.run_test() as pilot:
             app._profile_tabs["alpha"].name_filter = "training"
             app._profile_tabs["beta"].name_filter = ""
@@ -492,7 +492,7 @@ class TestDetailPanelToggle:
 
     @pytest.mark.asyncio
     async def test_shift_d_toggles_detail_panel(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             detail = app.query_one("#detail-clusterA", JobDetail)
             assert detail.display is True
@@ -505,7 +505,7 @@ class TestDetailPanelToggle:
 
     @pytest.mark.asyncio
     async def test_shift_plus_d_alias_also_toggles(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             detail = app.query_one("#detail-clusterA", JobDetail)
             await pilot.press("shift+d")

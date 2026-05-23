@@ -1,7 +1,7 @@
-# slurm-monitor
+# slurmhub
 
-[![Tests](https://github.com/matteospanio/slurm-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/matteospanio/slurm-monitor/actions/workflows/tests.yml)
-[![Docs](https://github.com/matteospanio/slurm-monitor/actions/workflows/docs.yml/badge.svg)](https://matteospanio.github.io/slurm-monitor/)
+[![Tests](https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml/badge.svg)](https://github.com/matteospanio/slurmhub/actions/workflows/tests.yml)
+[![Docs](https://github.com/matteospanio/slurmhub/actions/workflows/docs.yml/badge.svg)](https://matteospanio.github.io/slurmhub/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
@@ -35,38 +35,38 @@ built with [Textual](https://textual.textualize.io/).
 
 ## Installation
 
-`slurm-monitor` is built with [uv](https://github.com/astral-sh/uv). It requires
+`slurmhub` is built with [uv](https://github.com/astral-sh/uv). It requires
 Python ≥ 3.12 and an OpenSSH client.
 
 ```bash
 # Install uv (one-time)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install slurm-monitor as a CLI tool
-uv tool install git+https://github.com/matteospanio/slurm-monitor.git
+# Install slurmhub as a CLI tool
+uv tool install git+https://github.com/matteospanio/slurmhub.git
 
 # Run
-slurm-monitor
+slurmhub
 ```
 
 Or clone and run from source:
 
 ```bash
-git clone https://github.com/matteospanio/slurm-monitor.git
-cd slurm-monitor
+git clone https://github.com/matteospanio/slurmhub.git
+cd slurmhub
 uv sync
-uv run slurm-monitor
+uv run slurmhub
 ```
 
 Try it without a Slurm cluster:
 
 ```bash
-slurm-monitor --demo
+slurmhub --demo
 ```
 
 ## Quick start
 
-1. Run `slurm-monitor`. If no config exists at `~/.config/slurm_monitor/config.toml`,
+1. Run `slurmhub`. If no config exists at `~/.config/slurmhub/config.toml`,
    the **first-run wizard** walks you through creating one.
 2. Set up passwordless SSH to your cluster — `ssh-copy-id` your key and add a
    `Host` alias in `~/.ssh/config`.
@@ -78,17 +78,17 @@ slurm-monitor --demo
    ```
 
 Full SSH and configuration walkthrough:
-[docs site → Getting started](https://matteospanio.github.io/slurm-monitor/getting-started/installation.html).
+[docs site → Getting started](https://matteospanio.github.io/slurmhub/getting-started/installation.html).
 
 ## Documentation
 
 The full documentation lives at
-**[matteospanio.github.io/slurm-monitor](https://matteospanio.github.io/slurm-monitor/)**.
+**[matteospanio.github.io/slurmhub](https://matteospanio.github.io/slurmhub/)**.
 
-- [Getting started](https://matteospanio.github.io/slurm-monitor/getting-started/installation.html) — installation, quickstart, SSH setup
-- [Configuration](https://matteospanio.github.io/slurm-monitor/configuration/overview.html) — TOML schema, profiles, log paths, worked examples
-- [Usage guides](https://matteospanio.github.io/slurm-monitor/usage/job-table.html) — job table, detail screen, log viewer, cluster dashboard, batch script, scancel
-- [Reference](https://matteospanio.github.io/slurm-monitor/reference/keybindings.html) — keybindings, info sources, troubleshooting
+- [Getting started](https://matteospanio.github.io/slurmhub/getting-started/installation.html) — installation, quickstart, SSH setup
+- [Configuration](https://matteospanio.github.io/slurmhub/configuration/overview.html) — TOML schema, profiles, log paths, worked examples
+- [Usage guides](https://matteospanio.github.io/slurmhub/usage/job-table.html) — job table, detail screen, log viewer, cluster dashboard, batch script, scancel
+- [Reference](https://matteospanio.github.io/slurmhub/reference/keybindings.html) — keybindings, info sources, troubleshooting
 - [Changelog](CHANGELOG.md) — release notes
 
 Sphinx sources are under [`docs/`](docs/). Build locally with:

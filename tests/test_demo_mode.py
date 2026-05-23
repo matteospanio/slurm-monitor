@@ -3,12 +3,12 @@
 from click.testing import CliRunner
 import pytest
 
-from slurm_monitor import demo_data
-from slurm_monitor.app import SlurmMonitorApp
-from slurm_monitor.cli import main
-from slurm_monitor.config import AppConfig, ProfileConfig, SSHConfig
-from slurm_monitor.ssh_wrapper import DemoSSHClient
-from slurm_monitor.widgets.job_table import JobTable
+from slurmhub import demo_data
+from slurmhub.app import SlurmhubApp
+from slurmhub.cli import main
+from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
+from slurmhub.ssh_wrapper import DemoSSHClient
+from slurmhub.widgets.job_table import JobTable
 
 
 class TestDemoSSHClient:
@@ -92,14 +92,14 @@ class TestDemoModeApp:
         return AppConfig(profiles={"demo": profile})
 
     def test_app_uses_demo_ssh_client(self):
-        app = SlurmMonitorApp(config=self._demo_config(), demo=True)
+        app = SlurmhubApp(config=self._demo_config(), demo=True)
         tab = app._profile_tabs["demo"]
         assert isinstance(tab.ssh_client, DemoSSHClient)
 
     def test_app_uses_regular_ssh_client_without_demo(self):
-        from slurm_monitor.ssh_wrapper import SSHClient
+        from slurmhub.ssh_wrapper import SSHClient
 
-        app = SlurmMonitorApp(config=self._demo_config(), demo=False)
+        app = SlurmhubApp(config=self._demo_config(), demo=False)
         tab = app._profile_tabs["demo"]
         # Should be the regular client, not the demo subclass.
         assert isinstance(tab.ssh_client, SSHClient)
@@ -107,7 +107,7 @@ class TestDemoModeApp:
 
     @pytest.mark.asyncio
     async def test_demo_mode_populates_job_table(self):
-        app = SlurmMonitorApp(config=self._demo_config(), demo=True)
+        app = SlurmhubApp(config=self._demo_config(), demo=True)
         async with app.run_test() as pilot:
             # Initial refresh runs on mount; let the worker complete.
             await pilot.pause(0.4)
@@ -125,7 +125,7 @@ class TestDemoModeApp:
 
 
 class TestDemoCliFlag:
-    """``slurm-monitor --demo`` should run without touching SSH."""
+    """``slurmhub --demo`` should run without touching SSH."""
 
     def test_demo_flag_present_in_help(self):
         runner = CliRunner()
@@ -144,7 +144,7 @@ class TestDemoCliFlag:
             def run(self):
                 captured["ran"] = True
 
-        monkeypatch.setattr("slurm_monitor.app.SlurmMonitorApp", FakeApp)
+        monkeypatch.setattr("slurmhub.app.SlurmhubApp", FakeApp)
 
         runner = CliRunner()
         result = runner.invoke(main, ["--demo"])

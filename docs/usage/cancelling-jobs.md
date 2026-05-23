@@ -24,6 +24,6 @@ with a warning — no SSH round trip happens.
 
 ## What it doesn't do
 
-`slurm-monitor` runs Slurm's standard `scancel` command — it does not call
+`slurmhub` runs Slurm's standard `scancel` command — it does not call
 `scancel --signal=KILL`, `scancel --batch`, or any of the more aggressive forms. If
 you need those, use the shell. The TUI is intentionally conservative here.

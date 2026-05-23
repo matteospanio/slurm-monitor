@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from slurm_monitor.sinfo_parser import (
+from slurmhub.sinfo_parser import (
     ClusterCapacity,
     NodeStats,
     PartitionStats,

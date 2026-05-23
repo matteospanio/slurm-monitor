@@ -1,11 +1,11 @@
-"""Status bar widget for Slurm Monitor."""
+"""Status bar widget for slurmhub."""
 
 from typing import Optional
 
 from rich.text import Text
 from textual.widgets import Static
 
-from slurm_monitor.squeue_parser import SlurmJob
+from slurmhub.squeue_parser import SlurmJob
 
 
 class StatusBar(Static):

@@ -1,4 +1,4 @@
-"""Filter bar widget for Slurm Monitor."""
+"""Filter bar widget for slurmhub."""
 
 from textual.app import ComposeResult
 from textual.binding import Binding

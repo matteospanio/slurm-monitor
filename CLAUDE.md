@@ -12,4 +12,4 @@ Use `uv` for running the application, `pytest` for the test suite, `pre-commit` 
 
 ## Demo mode
 
-`uv run slurm-monitor --demo` launches the app against a built-in fixture dataset (no SSH needed). Useful for screenshots, demos, and reproducing UI bugs without a live cluster. Screenshot generation for the docs lives at `docs/scripts/generate_screenshots.py`.
+`uv run slurmhub --demo` launches the app against a built-in fixture dataset (no SSH needed). Useful for screenshots, demos, and reproducing UI bugs without a live cluster. Screenshot generation for the docs lives at `docs/scripts/generate_screenshots.py`.

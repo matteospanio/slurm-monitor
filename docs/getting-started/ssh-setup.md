@@ -1,6 +1,6 @@
 # SSH connection setup
 
-`slurm-monitor` uses [paramiko](https://www.paramiko.org/) (a pure-Python SSH library)
+`slurmhub` uses [paramiko](https://www.paramiko.org/) (a pure-Python SSH library)
 to talk to the cluster. Everything you can do with the regular `ssh` command — key
 auth, password auth, jump hosts, agent forwarding, host aliases — works here too. The
 recommended setup is **passwordless key authentication via an SSH config alias**,
@@ -47,7 +47,7 @@ Host mycluster
     ControlPersist 10m
 ```
 
-`slurm-monitor` automatically reads `~/.ssh/config` and resolves hostnames, usernames,
+`slurmhub` automatically reads `~/.ssh/config` and resolves hostnames, usernames,
 ports, identity files, and `ProxyCommand` entries. Once the alias works:
 
 ```bash
@@ -76,7 +76,7 @@ Host mycluster
     ProxyJump bastion
 ```
 
-Alternatively, declare the jump host directly in your `slurm-monitor` config:
+Alternatively, declare the jump host directly in your `slurmhub` config:
 
 ```toml
 [profiles.cluster]

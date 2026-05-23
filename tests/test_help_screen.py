@@ -2,9 +2,9 @@
 
 import pytest
 
-from slurm_monitor.app import SlurmMonitorApp
-from slurm_monitor.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
-from slurm_monitor.widgets.help_screen import HelpScreen
+from slurmhub.app import SlurmhubApp
+from slurmhub.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
+from slurmhub.widgets.help_screen import HelpScreen
 
 
 def _single_profile_config() -> AppConfig:
@@ -36,7 +36,7 @@ class TestHelpScreenWiring:
 
     @pytest.mark.asyncio
     async def test_question_mark_opens_help_from_main(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             await pilot.press("question_mark")
             await pilot.pause()
@@ -45,7 +45,7 @@ class TestHelpScreenWiring:
 
     @pytest.mark.asyncio
     async def test_escape_dismisses_help_from_main(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             await pilot.press("question_mark")
             await pilot.pause()

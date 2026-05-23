@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from slurm_monitor.job_aggregator import time_to_seconds
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.job_aggregator import time_to_seconds
+from slurmhub.ssh_wrapper import SSHClient
 
 
 @dataclass

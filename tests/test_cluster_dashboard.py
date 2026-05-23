@@ -6,11 +6,11 @@ import pytest
 
 from textual.widgets import DataTable
 
-from slurm_monitor.app import SlurmMonitorApp
-from slurm_monitor.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
-from slurm_monitor.sinfo_parser import ClusterCapacity, NodeStats, PartitionStats
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.widgets.cluster_dashboard import ClusterDashboardScreen
+from slurmhub.app import SlurmhubApp
+from slurmhub.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
+from slurmhub.sinfo_parser import ClusterCapacity, NodeStats, PartitionStats
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.widgets.cluster_dashboard import ClusterDashboardScreen
 
 
 def _make_capacity() -> ClusterCapacity:
@@ -94,7 +94,7 @@ class TestClusterDashboardPilot:
 
     @pytest.mark.asyncio
     async def test_d_key_pushes_dashboard(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             # Pre-seed cached data so the screen renders without an SSH call
             tab = app._profile_tabs["clusterA"]
@@ -104,7 +104,7 @@ class TestClusterDashboardPilot:
 
             # Avoid triggering a network fetch when the screen mounts
             with patch(
-                "slurm_monitor.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")
@@ -121,7 +121,7 @@ class TestClusterDashboardPilot:
 
     @pytest.mark.asyncio
     async def test_escape_closes_dashboard(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.cluster_capacity = _make_capacity()
@@ -129,7 +129,7 @@ class TestClusterDashboardPilot:
             tab.nodes = _make_nodes()
 
             with patch(
-                "slurm_monitor.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")
@@ -142,7 +142,7 @@ class TestClusterDashboardPilot:
 
     @pytest.mark.asyncio
     async def test_r_triggers_refresh(self):
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             tab = app._profile_tabs["clusterA"]
             tab.cluster_capacity = _make_capacity()
@@ -150,7 +150,7 @@ class TestClusterDashboardPilot:
             tab.nodes = _make_nodes()
 
             with patch(
-                "slurm_monitor.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ) as mock_fetch:
                 await pilot.press("d")
@@ -164,11 +164,11 @@ class TestClusterDashboardPilot:
     @pytest.mark.asyncio
     async def test_renders_loading_text_when_empty(self):
         """No cached data + slow fetch should show a loading placeholder."""
-        app = SlurmMonitorApp(config=_single_profile_config())
+        app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
             # ProfileTab has no cached capacity (default state)
             with patch(
-                "slurm_monitor.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")

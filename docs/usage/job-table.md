@@ -57,7 +57,7 @@ copy by hand.
 
 ## OSC 52 — clipboard over SSH
 
-`slurm-monitor` copies to the system clipboard using
+`slurmhub` copies to the system clipboard using
 [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands)
 escape sequences, which work **through SSH** without `xclip` / `pbcopy` on the
 remote side. Supported terminals:

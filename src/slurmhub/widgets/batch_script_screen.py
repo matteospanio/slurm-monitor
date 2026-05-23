@@ -16,8 +16,8 @@ from textual.screen import Screen
 from textual.widgets import Footer, RichLog, Static
 from textual.worker import WorkerState
 
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
 
 
 class BatchScriptHeader(Static):
@@ -121,7 +121,7 @@ class BatchScriptScreen(Screen):
         self.notify(f"Saved script to {path}", timeout=3)
 
     def action_yank_path(self) -> None:
-        from slurm_monitor.widgets._clipboard import copy_osc52
+        from slurmhub.widgets._clipboard import copy_osc52
 
         path = self._saved_path or self._default_save_path()
         path_str = str(path)

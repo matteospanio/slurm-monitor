@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slurm_monitor.config import SSHConfig
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
-from slurm_monitor.widgets.batch_script_screen import BatchScriptScreen
+from slurmhub.config import SSHConfig
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.widgets.batch_script_screen import BatchScriptScreen
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.ssh_wrapper import SSHClient
 
 
 @dataclass

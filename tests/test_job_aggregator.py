@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slurm_monitor.config import SSHConfig
-from slurm_monitor.job_aggregator import (
+from slurmhub.config import SSHConfig
+from slurmhub.job_aggregator import (
     JobAggregator,
     time_to_seconds,
     filter_jobs_by_state,
@@ -13,8 +13,8 @@ from slurm_monitor.job_aggregator import (
     merge_jobs,
     sort_jobs_by_time,
 )
-from slurm_monitor.squeue_parser import SlurmJob
-from slurm_monitor.ssh_wrapper import SSHClient
+from slurmhub.squeue_parser import SlurmJob
+from slurmhub.ssh_wrapper import SSHClient
 
 
 @pytest.fixture
@@ -284,9 +284,9 @@ class TestJobAggregator:
         historical = [SlurmJob("12344", "job2", "COMPLETED", "02:34:56", "/home/user")]
 
         with patch(
-            "slurm_monitor.job_aggregator.fetch_squeue_jobs"
+            "slurmhub.job_aggregator.fetch_squeue_jobs"
         ) as mock_sq, patch(
-            "slurm_monitor.job_aggregator.fetch_sacct_jobs"
+            "slurmhub.job_aggregator.fetch_sacct_jobs"
         ) as mock_sa:
             mock_sq.return_value = active
             mock_sa.return_value = historical
@@ -305,9 +305,9 @@ class TestJobAggregator:
         ]
 
         with patch(
-            "slurm_monitor.job_aggregator.fetch_squeue_jobs"
+            "slurmhub.job_aggregator.fetch_squeue_jobs"
         ) as mock_sq, patch(
-            "slurm_monitor.job_aggregator.fetch_sacct_jobs"
+            "slurmhub.job_aggregator.fetch_sacct_jobs"
         ) as mock_sa:
             mock_sq.return_value = active
             mock_sa.return_value = historical
@@ -321,9 +321,9 @@ class TestJobAggregator:
 
     def test_fetch_all_jobs_empty(self, mock_ssh_client):
         with patch(
-            "slurm_monitor.job_aggregator.fetch_squeue_jobs"
+            "slurmhub.job_aggregator.fetch_squeue_jobs"
         ) as mock_sq, patch(
-            "slurm_monitor.job_aggregator.fetch_sacct_jobs"
+            "slurmhub.job_aggregator.fetch_sacct_jobs"
         ) as mock_sa:
             mock_sq.return_value = []
             mock_sa.return_value = []
@@ -333,9 +333,9 @@ class TestJobAggregator:
 
     def test_fetch_all_jobs_passes_timeout(self, mock_ssh_client):
         with patch(
-            "slurm_monitor.job_aggregator.fetch_squeue_jobs"
+            "slurmhub.job_aggregator.fetch_squeue_jobs"
         ) as mock_sq, patch(
-            "slurm_monitor.job_aggregator.fetch_sacct_jobs"
+            "slurmhub.job_aggregator.fetch_sacct_jobs"
         ) as mock_sa:
             mock_sq.return_value = []
             mock_sa.return_value = []
@@ -348,9 +348,9 @@ class TestJobAggregator:
 
     def test_fetch_all_jobs_passes_client(self, mock_ssh_client):
         with patch(
-            "slurm_monitor.job_aggregator.fetch_squeue_jobs"
+            "slurmhub.job_aggregator.fetch_squeue_jobs"
         ) as mock_sq, patch(
-            "slurm_monitor.job_aggregator.fetch_sacct_jobs"
+            "slurmhub.job_aggregator.fetch_sacct_jobs"
         ) as mock_sa:
             mock_sq.return_value = []
             mock_sa.return_value = []

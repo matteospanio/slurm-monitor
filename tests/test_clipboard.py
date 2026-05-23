@@ -3,7 +3,7 @@
 import base64
 import io
 
-from slurm_monitor.widgets._clipboard import build_osc52_sequence, copy_osc52
+from slurmhub.widgets._clipboard import build_osc52_sequence, copy_osc52
 
 
 class TestBuildOsc52Sequence:
