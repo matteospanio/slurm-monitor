@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from slurmhub.qt.controller import AppController
 from slurmhub.qt.views.cluster_view import ClusterView
+from slurmhub.qt.views.history_view import HistoryView
 from slurmhub.qt.views.queue_view import QueueView
 from slurmhub.qt.views.settings_view import SettingsView
 
@@ -172,7 +173,8 @@ class MainWindow(QMainWindow):
         self.cluster_view = ClusterView(self.controller)
         self._pages["cluster"] = self.cluster_view
 
-        self._pages["history"] = _placeholder("History", "Coming next")
+        self.history_view = HistoryView(self.controller)
+        self._pages["history"] = self.history_view
 
         self.settings_view = SettingsView(self.controller)
         self._pages["settings"] = self.settings_view

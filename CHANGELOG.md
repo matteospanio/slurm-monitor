@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Qt first-run setup wizard** — shown on first GUI launch when no config exists,
   with an SSH connection test; `--tui` keeps the Textual wizard. A password/passphrase
   prompt now also appears in the GUI when SSH auth is required.
+- **History & analytics screen** — a filterable table of persisted runs (date range,
+  profile, state, favourites-only, search) with star/unstar and note editing, plus a
+  Usage tab showing GPU/CPU/memory-hour totals, average measured GPU utilisation, and
+  a per-profile resource-hours bar chart (QtCharts). Reads run on worker threads via
+  `Repository.query_runs` / `aggregate_usage`.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed
