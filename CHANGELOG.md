@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Persistent job history database** — a local SQLite database (default
+  `~/.config/slurmhub/jobs.db`, configurable) records every observed run, a
+  time-series of its resource usage, and log paths. Managed with SQLAlchemy and
+  migrated with Alembic at startup, so the schema stays forward-compatible. On by
+  default; disable with `[database] enabled = false`.
+- **Job history & analytics screen** (`H`) — a filterable/searchable table of past
+  runs (by state, date range, favourite, current-profile vs all-profiles), plus a
+  usage-aggregates view (`a`) showing GPU-hours, CPU-hours, memory GB·h, and average
+  measured GPU utilisation, with a per-profile breakdown.
+- **Favourites & notes** — star runs (`f`) and annotate them (`n`) from the job
+  detail and history screens; favourites are exempt from retention pruning.
+- **Configurable retention** — `[database] retention_days` prunes runs older than N
+  days at startup (favourites always kept); `0` keeps everything.
+- **Measured-utilisation capture** — an optional slower-cadence pass records live
+  GPU% / actual memory for running jobs (`[database] capture_utilization`,
+  `utilization_interval`).
+- New `db/` subpackage (`models`, `engine`, `repository`, Alembic env + initial
+  migration, demo seed) and `widgets/history_screen.py`, `widgets/note_input_screen.py`.
+- 58 new tests covering the DB models/repository, migrations, retention, threaded
+  read/write, aggregates, the capture hook, the history and note-input screens, demo
+  isolation, and `[database]` config parsing (475 total).
+
+### Changed
+
+- `squeue` capture now also requests submit time, allocated CPUs, and requested
+  memory (`%V|%C|%m`); `sacct` switched to pipe-delimited `--parsable2` with
+  `Submit,NCPUS,ReqMem` (also fixes parsing of names/work dirs containing spaces).
+  These power stable per-run identity and the CPU/memory-hour aggregates; the live
+  views are unchanged.
+- `--demo` now ships a seeded in-memory history database so the history and analytics
+  screens are demonstrable; it never touches `~/.config`.
+- `sqlalchemy>=2.0` and `alembic>=1.13` added as runtime dependencies.
+
 ## [1.0.0] - 2026-05-22
 
 First official public release.

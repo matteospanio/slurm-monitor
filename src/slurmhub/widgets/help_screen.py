@@ -18,6 +18,7 @@ _HELP: dict[str, dict[str, list[tuple[str, str]]]] = {
             ("h / l", "Switch to previous / next profile tab"),
             ("Enter", "Open the job detail screen"),
             ("d", "Open the cluster dashboard"),
+            ("H", "Open the job history & analytics"),
             ("D", "Toggle the bottom detail panel"),
             ("?", "Show this help"),
         ],
@@ -47,8 +48,32 @@ _HELP: dict[str, dict[str, list[tuple[str, str]]]] = {
             ("e", "Open the stderr log viewer"),
             ("v", "Show the submitted batch script"),
             ("c", "Cancel this job (confirms first)"),
+            ("f", "Toggle this run as a favourite"),
+            ("n", "Edit the favourite's note"),
             ("y", "Copy job ID / paths to clipboard (cycles)"),
             ("?", "Show this help"),
+        ],
+    },
+    "history": {
+        "Navigation": [
+            ("j / k", "Move cursor down / up"),
+            ("g / G", "Jump to first / last row"),
+            ("Enter", "Open the selected run's detail screen"),
+            ("Esc / q", "Back to the job list"),
+        ],
+        "View & filter": [
+            ("a", "Toggle the usage-aggregates view"),
+            ("p", "Toggle current-profile / all-profiles scope"),
+            ("t", "Cycle the date range (all / 24h / 7d / 30d)"),
+            ("F", "Show favourites only"),
+            ("1 / 2 / 3 / 4", "Filter RUNNING / PENDING / COMPLETED / FAILED"),
+            ("0", "Clear the state filter"),
+            ("/", "Search by job name or ID"),
+        ],
+        "Favourites": [
+            ("f", "Toggle the selected run as a favourite"),
+            ("n", "Edit the selected run's note"),
+            ("r", "Re-run the query"),
         ],
     },
     "dashboard": {
@@ -125,6 +150,7 @@ class HelpScreen(ModalScreen[None]):
     _TITLES = {
         "main": "Job list — keybindings",
         "detail": "Job detail — keybindings",
+        "history": "Job history — keybindings",
         "dashboard": "Cluster dashboard — keybindings",
         "log": "Log viewer — keybindings",
     }

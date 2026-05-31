@@ -30,6 +30,10 @@ table fed by `sinfo`.
 Configure several clusters in `~/.config/slurmhub/config.toml` and switch
 between them with `h` / `l`. Filter, search and sort state is remembered per tab.
 :::
+:::{grid-item-card} Job history & analytics
+A local SQLite database records every run, its resource usage over time, and your
+favourites — browse it with `H`, including GPU/CPU/memory-hour aggregates.
+:::
 ::::
 
 ## Quick start
@@ -68,6 +72,7 @@ getting-started/ssh-setup
 configuration/overview
 configuration/profiles
 configuration/log-paths
+configuration/database
 configuration/examples
 ```
 
@@ -79,6 +84,7 @@ usage/job-table
 usage/job-detail
 usage/log-viewer
 usage/cluster-dashboard
+usage/job-history
 usage/batch-script
 usage/cancelling-jobs
 ```

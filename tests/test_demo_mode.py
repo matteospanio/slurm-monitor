@@ -137,9 +137,10 @@ class TestDemoCliFlag:
         captured = {}
 
         class FakeApp:
-            def __init__(self, config, demo=False):
+            def __init__(self, config, demo=False, database=None):
                 captured["config"] = config
                 captured["demo"] = demo
+                captured["database"] = database
 
             def run(self):
                 captured["ran"] = True
@@ -154,3 +155,5 @@ class TestDemoCliFlag:
         assert captured.get("demo") is True
         # The synthetic config should have a single 'demo' profile.
         assert list(captured["config"].profiles.keys()) == ["demo"]
+        # Demo mode wires in a throwaway in-memory history database.
+        assert captured.get("database") is not None

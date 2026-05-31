@@ -16,6 +16,7 @@ from pathlib import Path
 
 from slurmhub.app import SlurmhubApp
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
+from slurmhub.db.engine import open_demo_database
 from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "_static" / "screenshots"
@@ -31,7 +32,10 @@ def _demo_config() -> AppConfig:
 
 
 def _new_app() -> SlurmhubApp:
-    return SlurmhubApp(config=_demo_config(), demo=True)
+    # Seeded in-memory history DB so the history/analytics screens render.
+    return SlurmhubApp(
+        config=_demo_config(), demo=True, database=open_demo_database()
+    )
 
 
 async def _wait_until_jobs_loaded(app: SlurmhubApp, pilot) -> None:
@@ -155,6 +159,26 @@ async def shot_confirm_scancel() -> None:
         await _shot(app, pilot, "09_confirm_scancel.svg")
 
 
+async def shot_job_history() -> None:
+    app = _new_app()
+    async with app.run_test(size=TERMINAL_SIZE) as pilot:
+        await _wait_until_jobs_loaded(app, pilot)
+        await pilot.press("H")  # → history screen (past runs)
+        await pilot.pause(0.5)
+        await _shot(app, pilot, "10_job_history.svg")
+
+
+async def shot_usage_aggregates() -> None:
+    app = _new_app()
+    async with app.run_test(size=TERMINAL_SIZE) as pilot:
+        await _wait_until_jobs_loaded(app, pilot)
+        await pilot.press("H")
+        await pilot.pause(0.5)
+        await pilot.press("a")  # → usage-aggregates view
+        await pilot.pause(0.3)
+        await _shot(app, pilot, "11_usage_aggregates.svg")
+
+
 SHOTS = [
     shot_main_job_table,
     shot_job_detail,
@@ -165,6 +189,8 @@ SHOTS = [
     shot_first_run_wizard,
     shot_batch_script,
     shot_confirm_scancel,
+    shot_job_history,
+    shot_usage_aggregates,
 ]
 
 

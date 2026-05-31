@@ -20,6 +20,7 @@ is the union of all of them.
 | `h` / `l` | Previous / next profile tab |
 | `Enter` | Open the **Job Detail** screen |
 | `d` | Open the **Cluster Dashboard** |
+| `H` (Shift+H) | Open the **Job History & analytics** screen |
 | `D` (Shift+D) | Toggle the bottom detail panel |
 | `/` | Open the search bar (`Esc` clears, `Enter` confirms) |
 | `1` / `2` / `3` / `4` | Toggle filter RUNNING / PENDING / COMPLETED / FAILED |
@@ -37,8 +38,28 @@ is the union of all of them.
 | `e` | Open the log viewer on `StdErr` |
 | `v` | Open the batch script viewer |
 | `c` | `scancel` this job |
+| `f` | Toggle this run as a favourite |
+| `n` | Edit the favourite's note |
 | `y` | Cycle yank: job ID → stdout path → stderr path → work dir |
 | `j` / `k` / `g` / `G` | Scroll within the detail body |
+| `Esc` / `q` | Back to the job list |
+
+## Job history screen
+
+| Key | Action |
+|-----|--------|
+| `a` | Toggle past-runs / usage-aggregates view |
+| `f` | Toggle the selected run as a favourite |
+| `n` | Edit the selected run's note |
+| `p` | Toggle current-profile / all-profiles scope |
+| `t` | Cycle the date range (all / 24h / 7d / 30d) |
+| `F` (Shift+F) | Show favourites only |
+| `1` / `2` / `3` / `4` | Filter RUNNING / PENDING / COMPLETED / FAILED |
+| `0` | Clear the state filter |
+| `/` | Search by job name or ID |
+| `Enter` | Open the selected run's detail screen |
+| `r` | Re-run the query |
+| `j` / `k` / `g` / `G` | Move the cursor |
 | `Esc` / `q` | Back to the job list |
 
 ## Log viewer

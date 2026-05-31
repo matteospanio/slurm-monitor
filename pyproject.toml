@@ -8,9 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.13",
     "click>=8.1",
     "paramiko>=3.5",
     "rich>=14.3.1",
+    "sqlalchemy>=2.0",
     "textual>=7.4.0",
 ]
 
