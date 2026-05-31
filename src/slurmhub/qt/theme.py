@@ -99,6 +99,28 @@ def state_color(state: str, mode: Optional[str] = None) -> QColor:
     return QColor(tokens[key])
 
 
+def bar_color(percentage: float, mode: Optional[str] = None) -> QColor:
+    """Utilisation bar colour: green <70%, yellow 70–89%, red ≥90%.
+
+    Matches the thresholds used by the TUI's ``widgets/_bars.py:render_bar``.
+    """
+    resolved = resolve_mode(mode or load_theme_preference())
+    tokens = TOKENS[resolved]
+    if percentage >= 90:
+        key = "failed"
+    elif percentage >= 70:
+        key = "pending"
+    else:
+        key = "running"
+    return QColor(tokens[key])
+
+
+def token(name: str, mode: Optional[str] = None) -> QColor:
+    """Return an arbitrary palette token as a :class:`QColor`."""
+    resolved = resolve_mode(mode or load_theme_preference())
+    return QColor(TOKENS[resolved][name])
+
+
 def _build_qss(tokens: dict[str, str]) -> str:
     template = Template(_QSS_PATH.read_text(encoding="utf-8"))
     return template.safe_substitute(tokens)

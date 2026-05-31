@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from slurmhub.qt.controller import AppController
+from slurmhub.qt.views.cluster_view import ClusterView
 from slurmhub.qt.views.queue_view import QueueView
 
 DOCS_URL = "https://matteospanio.github.io/slurmhub/"
@@ -167,7 +168,9 @@ class MainWindow(QMainWindow):
         self.queue_view = QueueView(self.controller)
         self._pages["queue"] = self.queue_view
 
-        self._pages["cluster"] = _placeholder("Cluster Status", "Coming next")
+        self.cluster_view = ClusterView(self.controller)
+        self._pages["cluster"] = self.cluster_view
+
         self._pages["history"] = _placeholder("History", "Coming next")
         self._pages["settings"] = _placeholder("Settings", "Coming next")
         self._pages["about"] = _placeholder(

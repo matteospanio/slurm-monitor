@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state filter, a name/ID search, click-to-sort columns, a live cluster summary
   strip, a collapsible detail panel, and `scancel` (behind a confirmation, `Delete`
   shortcut).
+- **Cluster Status screen** — CPU/GPU/memory utilisation bars (green/yellow/red by
+  threshold), a node-state summary, and partition + node tables, all fed by
+  `fetch_sinfo` and refreshed on the cluster cadence.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed
