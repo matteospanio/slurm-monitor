@@ -234,6 +234,11 @@ def fetch_profile_data(
 
     except (SSHConnectionError, SSHTimeoutError, SSHAuthenticationError) as e:
         return FetchResult(profile_name=profile_name, error=e)
+    except Exception as e:  # noqa: BLE001 — keep the worker from dying silently
+        # Surface unexpected errors through the normal error channel so the
+        # connection strip shows them, rather than relying on the worker's
+        # ``failed`` signal (which is harder to route the profile name through).
+        return FetchResult(profile_name=profile_name, error=e)
 
 
 class AppController(QObject):
@@ -249,6 +254,8 @@ class AppController(QObject):
     fetchFailed = Signal(str, str)   # profile_name, message
     authRequired = Signal(str)       # profile_name — SSH auth needs a credential
     activeProfileChanged = Signal(str)
+    # profile_name, job_id, verb, ok, message
+    jobActionFinished = Signal(str, str, str, bool, str)
 
     def __init__(
         self,
@@ -323,10 +330,10 @@ class AppController(QObject):
         task = FetchTask(
             fetch_profile_data, session, name, self.database, self.repository
         )
+        # Connect to a bound method (a QObject slot): with AutoConnection the
+        # result is delivered to the main thread. A bare lambda has no receiver
+        # QObject, so a cross-thread emit would not be queued onto this thread.
         task.signals.finished.connect(self._on_fetch_finished)
-        task.signals.failed.connect(
-            lambda exc, n=name: self._on_fetch_failed(n, exc)
-        )
         self._pool.start(task)
 
     def force_refresh_active(self) -> None:
@@ -375,21 +382,54 @@ class AppController(QObject):
 
         self._rearm(name)
 
-    def _on_fetch_failed(self, name: str, exc: Exception) -> None:
-        session = self.sessions.get(name)
-        if session is not None:
-            session.refresh_in_progress = False
-            session.is_loading = False
-            session.error_message = str(exc)
-            self.connectionChanged.emit(name)
-        self.fetchFailed.emit(name, str(exc))
-        self._rearm(name)
-
     def _rearm(self, name: str) -> None:
         timer = self._timers.get(name)
         session = self.sessions.get(name)
         if timer is not None and session is not None:
             timer.start(int(session.profile.refresh_interval * 1000))
+
+    # ── job actions (scancel / scontrol) ─────────────────────────────
+    def run_job_command(
+        self, profile_name: str, job_id: str, command: str, verb: str
+    ) -> None:
+        """Run a one-shot SSH command for a job on a worker thread.
+
+        On success the active profile is refreshed so the new state shows up
+        promptly. ``verb`` (``cancel`` / ``requeue`` / …) is echoed back via
+        :data:`jobActionFinished` for the UI to report.
+        """
+        session = self.sessions.get(profile_name)
+        if session is None:
+            return
+        timeout = session.profile.ssh_timeout
+        client = session.ssh_client
+
+        def _run() -> tuple[str, str, str, bool, str]:
+            # The worker returns a fully-formed result tuple (catching its own
+            # errors) so a single bound-method slot can handle it on the main
+            # thread — see the note in refresh_profile about lambda receivers.
+            try:
+                client.execute(command, timeout=timeout)
+                return (profile_name, job_id, verb, True, "")
+            except Exception as exc:  # noqa: BLE001 — reported to the UI
+                return (profile_name, job_id, verb, False, str(exc))
+
+        task = FetchTask(_run)
+        task.signals.finished.connect(self._on_action_result)
+        self._pool.start(task)
+
+    def cancel_job(self, profile_name: str, job_id: str) -> None:
+        import shlex
+
+        self.run_job_command(
+            profile_name, job_id, f"scancel {shlex.quote(job_id)}", "cancel"
+        )
+
+    def _on_action_result(self, result: tuple) -> None:
+        profile_name, job_id, verb, ok, message = result
+        self.jobActionFinished.emit(profile_name, job_id, verb, ok, message)
+        if ok:
+            self.refresh_profile(profile_name)
 
     # ── auth ─────────────────────────────────────────────────────────
     def submit_credentials(self, name: str, password: Optional[str]) -> None:

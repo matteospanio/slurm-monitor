@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from slurmhub.qt.controller import AppController, get_filtered_jobs
+from slurmhub.qt.controller import AppController
+from slurmhub.qt.views.queue_view import QueueView
 
 DOCS_URL = "https://matteospanio.github.io/slurmhub/"
 
@@ -163,19 +164,8 @@ class MainWindow(QMainWindow):
         return header
 
     def _build_pages(self) -> None:
-        # Queue placeholder shows live data so Phase 0 proves the pipeline.
-        queue_page = QWidget()
-        q_layout = QVBoxLayout(queue_page)
-        q_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        q_title = QLabel("Queue")
-        q_title.setStyleSheet("font-size: 18pt; font-weight: bold;")
-        q_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.queue_status = QLabel("Loading jobs…")
-        self.queue_status.setObjectName("HeaderStatus")
-        self.queue_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        q_layout.addWidget(q_title)
-        q_layout.addWidget(self.queue_status)
-        self._pages["queue"] = queue_page
+        self.queue_view = QueueView(self.controller)
+        self._pages["queue"] = self.queue_view
 
         self._pages["cluster"] = _placeholder("Cluster Status", "Coming next")
         self._pages["history"] = _placeholder("History", "Coming next")
@@ -194,6 +184,7 @@ class MainWindow(QMainWindow):
         self.controller.connectionChanged.connect(self._on_connection_changed)
         self.controller.jobsUpdated.connect(self._on_jobs_updated)
         self.controller.fetchFailed.connect(self._on_fetch_failed)
+        self.controller.jobActionFinished.connect(self._on_job_action_finished)
 
     def _on_profile_changed(self, name: str) -> None:
         if not name:
@@ -207,16 +198,24 @@ class MainWindow(QMainWindow):
 
     def _on_jobs_updated(self, name: str) -> None:
         if name == self.controller.active_profile:
-            self._update_queue()
             self._update_status_bar()
 
     def _on_fetch_failed(self, name: str, message: str) -> None:
         self.statusBar().showMessage(f"[{name}] {message}", 8000)
 
+    def _on_job_action_finished(
+        self, name: str, job_id: str, verb: str, ok: bool, message: str
+    ) -> None:
+        if ok:
+            self.statusBar().showMessage(f"{verb} {job_id}: ok", 4000)
+        else:
+            self.statusBar().showMessage(
+                f"{verb} {job_id} failed: {message}", 8000
+            )
+
     # ── view sync ────────────────────────────────────────────────────
     def _sync_active_profile_view(self) -> None:
         self._update_header()
-        self._update_queue()
         self._update_status_bar()
 
     def _update_header(self) -> None:
@@ -237,18 +236,6 @@ class MainWindow(QMainWindow):
         # Re-polish so the [state="..."] QSS selector re-applies.
         self.header_status.style().unpolish(self.header_status)
         self.header_status.style().polish(self.header_status)
-
-    def _update_queue(self) -> None:
-        session = self.controller.session()
-        if session is None:
-            return
-        jobs = get_filtered_jobs(session)
-        if session.last_updated:
-            self.queue_status.setText(
-                f"{len(jobs)} jobs · updated {session.last_updated}"
-            )
-        else:
-            self.queue_status.setText("Loading jobs…")
 
     def _update_status_bar(self) -> None:
         session = self.controller.session()

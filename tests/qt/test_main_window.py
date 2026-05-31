@@ -22,12 +22,12 @@ def test_nav_selection_switches_stacked_page(demo_controller, qtbot):
         assert window.stack.currentIndex() == row
 
 
-def test_queue_placeholder_reflects_demo_jobs(demo_controller, qtbot):
+def test_queue_view_reflects_demo_jobs(demo_controller, qtbot):
     window = MainWindow(demo_controller)
     qtbot.addWidget(window)
 
     with qtbot.waitSignal(demo_controller.jobsUpdated, timeout=5000):
         demo_controller.refresh_profile("demo")
 
-    assert "jobs" in window.queue_status.text()
+    assert window.queue_view.model.rowCount() > 0
     assert window.statusBar().currentMessage()

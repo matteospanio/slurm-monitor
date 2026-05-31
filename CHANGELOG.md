@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workers`, `main_window`, `app`). The SSH, parser, history-database, and config
   layers are reused unchanged — blocking calls run on a `QThreadPool` and periodic
   refresh is driven by per-profile `QTimer`s, mirroring the TUI's worker model.
+- **Queue / My Jobs screen** — a sortable table of the active profile's merged
+  active+historical jobs (colour-coded state badges, CPU/GPU/memory columns), with a
+  state filter, a name/ID search, click-to-sort columns, a live cluster summary
+  strip, a collapsible detail panel, and `scancel` (behind a confirmation, `Delete`
+  shortcut).
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed

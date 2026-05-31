@@ -51,3 +51,13 @@ def test_refresh_populates_jobs_off_thread(demo_controller, qtbot):
     # Demo cluster capacity / queue stats also arrive on the first cycle.
     assert session.cluster_capacity is not None
     assert session.queue_stats is not None
+
+
+def test_cancel_job_emits_success(demo_controller, qtbot):
+    with qtbot.waitSignal(demo_controller.jobActionFinished, timeout=5000) as blocker:
+        demo_controller.cancel_job("demo", "2172044")
+    profile, job_id, verb, ok, _msg = blocker.args
+    assert profile == "demo"
+    assert job_id == "2172044"
+    assert verb == "cancel"
+    assert ok is True

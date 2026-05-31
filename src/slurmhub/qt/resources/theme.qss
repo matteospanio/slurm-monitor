@@ -109,6 +109,12 @@ QToolTip {
     color: $running;
 }
 
+#DetailPanel {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 6px;
+}
+
 /* ── Tables ────────────────────────────────────────────────────── */
 QHeaderView::section {
     background-color: $surface2;
