@@ -9,6 +9,7 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -24,7 +25,8 @@ from slurmhub.gui.controller import AppController
 from slurmhub.gui.icons import button_icon
 from slurmhub.gui.models.jobs_model import format_mem_mb
 from slurmhub.gui.models.simple_table import Column, SimpleTableModel
-from slurmhub.gui.widgets import CapacityBar
+from slurmhub.gui.theme import token
+from slurmhub.gui.widgets import CapacityBar, StatStrip
 
 _PARTITION_COLUMNS = [
     Column("Partition", lambda p: p.name),
@@ -78,27 +80,44 @@ class ClusterView(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
+        heading = QVBoxLayout()
+        heading.setSpacing(1)
+        title = QLabel("Cluster status")
+        title.setObjectName("ViewTitle")
+        heading.addWidget(title)
         self.nodes_summary = QLabel("")
         self.nodes_summary.setObjectName("HeaderStatus")
-        header.addWidget(self.nodes_summary)
+        heading.addWidget(self.nodes_summary)
+        header.addLayout(heading)
         header.addStretch(1)
         refresh = QPushButton(button_icon("fa5s.sync-alt"), "Refresh")
         refresh.clicked.connect(self.controller.force_refresh_active)
-        header.addWidget(refresh)
+        header.addWidget(refresh, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
+        self.node_tiles = StatStrip()
+        layout.addWidget(self.node_tiles)
+
+        bars_card = QFrame()
+        bars_card.setObjectName("JobCard")
+        bars_layout = QVBoxLayout(bars_card)
+        bars_layout.setContentsMargins(16, 14, 16, 14)
+        bars_title = QLabel("Utilisation")
+        bars_title.setObjectName("JobCardTitle")
+        bars_layout.addWidget(bars_title)
         bars = QHBoxLayout()
-        bars.setSpacing(16)
+        bars.setSpacing(22)
         self.cpu_bar = CapacityBar("CPU")
         self.gpu_bar = CapacityBar("GPU")
         self.mem_bar = CapacityBar("Memory")
         for bar in (self.cpu_bar, self.gpu_bar, self.mem_bar):
             bars.addWidget(bar)
-        layout.addLayout(bars)
+        bars_layout.addLayout(bars)
+        layout.addWidget(bars_card)
 
         self.partitions_model = SimpleTableModel(_PARTITION_COLUMNS)
         self.nodes_model = SimpleTableModel(_NODE_COLUMNS)
@@ -142,6 +161,20 @@ class ClusterView(QWidget):
             self.nodes_summary.setText(
                 f"{cap.nodes_up} up   •   {cap.nodes_down} down   •   "
                 f"{cap.nodes_drain} drain   •   updated {cap.fetched_at}"
+            )
+            total = cap.nodes_up + cap.nodes_down + cap.nodes_drain
+            self.node_tiles.set_tile("total", "Nodes", str(total))
+            self.node_tiles.set_tile(
+                "up", "Online", str(cap.nodes_up),
+                token("running") if cap.nodes_up else None,
+            )
+            self.node_tiles.set_tile(
+                "down", "Down", str(cap.nodes_down),
+                token("failed") if cap.nodes_down else None,
+            )
+            self.node_tiles.set_tile(
+                "drain", "Draining", str(cap.nodes_drain),
+                token("pending") if cap.nodes_drain else None,
             )
         else:
             self.nodes_summary.setText("Waiting for cluster data…")

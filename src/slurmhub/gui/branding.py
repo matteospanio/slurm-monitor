@@ -7,8 +7,8 @@ build self-contained.
 
 from functools import lru_cache
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap
 
 
 @lru_cache(maxsize=1)
@@ -17,9 +17,14 @@ def app_icon() -> QIcon:
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#2f6feb"))
+
+    gradient = QLinearGradient(QPointF(40, 24), QPointF(216, 232))
+    gradient.setColorAt(0.0, QColor("#7aa2ff"))
+    gradient.setColorAt(1.0, QColor("#3b6fe0"))
+    painter.setBrush(gradient)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawRoundedRect(QRectF(16, 16, 224, 224), 48, 48)
+    painter.drawRoundedRect(QRectF(16, 16, 224, 224), 56, 56)
+
     font = QFont()
     font.setBold(True)
     font.setPixelSize(150)

@@ -35,6 +35,7 @@ from slurmhub.gui.icons import button_icon
 from slurmhub.gui.models.delegates import StateBadgeDelegate
 from slurmhub.gui.models.jobs_model import JOB_ROLE, SORT_ROLE, JobsModel
 from slurmhub.gui.theme import token
+from slurmhub.gui.widgets import StatStrip
 from slurmhub.slurm.squeue import SlurmJob
 
 # (label, state value used by get_filtered_jobs).
@@ -69,6 +70,9 @@ class QueueView(QWidget):
         layout.setSpacing(8)
 
         layout.addLayout(self._build_toolbar())
+
+        self.stats = StatStrip()
+        layout.addWidget(self.stats)
 
         self.summary = QLabel("")
         self.summary.setObjectName("HeaderStatus")
@@ -278,6 +282,7 @@ class QueueView(QWidget):
         return self.proxy.data(index, JOB_ROLE)
 
     def _update_summary(self, session) -> None:
+        self._update_tiles(session)
         scope = "Cluster queue" if session.queue_scope == "all" else "My jobs"
         parts: list[str] = [f"Scope: {scope}"]
         stats = session.queue_stats
@@ -286,15 +291,10 @@ class QueueView(QWidget):
                 f"Queue: {stats.total_running} running / "
                 f"{stats.total_pending} pending / {stats.total_other} other"
             )
-        cap = session.cluster_capacity
-        if cap is not None:
-            parts.append(f"CPU {cap.cpu_percentage:.0f}%")
-            if cap.gpus_total:
-                parts.append(f"GPU {cap.gpu_percentage:.0f}%")
         if session.last_updated:
             parts.append(f"Updated {session.last_updated}")
         self.summary.setText(
-            "  |  ".join(parts) if parts else "Waiting for first refresh..."
+            "   •   ".join(parts) if parts else "Waiting for first refresh..."
         )
 
         if session.error_message:
@@ -489,6 +489,25 @@ class QueueView(QWidget):
         if job is not None and session is not None:
             path = session.path_resolver.resolve_path(job.job_id, job.work_dir)
             QApplication.clipboard().setText(path)
+
+    def _update_tiles(self, session) -> None:
+        jobs = session.jobs
+        running = sum(1 for j in jobs if j.state == "RUNNING")
+        pending = sum(1 for j in jobs if j.state == "PENDING")
+        label = "In queue" if session.queue_scope == "all" else "My jobs"
+        self.stats.set_tile("jobs", label, str(len(jobs)))
+        self.stats.set_tile(
+            "running", "Running", str(running), token("running") if running else None
+        )
+        self.stats.set_tile(
+            "pending", "Pending", str(pending), token("pending") if pending else None
+        )
+        cap = session.cluster_capacity
+        self.stats.set_tile(
+            "cpu", "Cluster CPU", f"{cap.cpu_percentage:.0f}%" if cap else "—"
+        )
+        if cap is not None and cap.gpus_total:
+            self.stats.set_tile("gpu", "Cluster GPU", f"{cap.gpu_percentage:.0f}%")
 
     # ── helpers ──────────────────────────────────────────────────────
     def _select_state_combo(self, state_value: str) -> None:

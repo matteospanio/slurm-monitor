@@ -20,34 +20,42 @@ from PySide6.QtWidgets import QApplication
 
 _QSS_PATH = Path(__file__).parent / "resources" / "theme.qss"
 
-# Token tables. Ported from the Textual ``app.tcss`` palette + state colours.
+# Token tables. A cohesive, modern palette: deep blue-tinted neutrals on dark,
+# soft cool greys on light, and a single vivid accent. ``*_soft`` tokens are
+# low-contrast tints (chip/hover backgrounds); ``surface3`` is the hover layer.
 TOKENS: dict[str, dict[str, str]] = {
     "dark": {
-        "bg": "#1e1f22",
-        "surface": "#2b2d31",
-        "surface2": "#26282c",
-        "text": "#e6e6e6",
-        "text_muted": "#9aa0a6",
-        "border": "#3a3c40",
-        "accent": "#4f8cff",
+        "bg": "#0e1016",
+        "surface": "#171a22",
+        "surface2": "#1e222c",
+        "surface3": "#272c38",
+        "text": "#e7eaf0",
+        "text_muted": "#98a1b3",
+        "border": "#2b313d",
+        "accent": "#5b8cff",
+        "accent_hover": "#7aa2ff",
         "accent_text": "#ffffff",
-        "running": "#3fb950",
-        "pending": "#d29922",
-        "failed": "#f85149",
-        "completed": "#8b949e",
+        "accent_soft": "#1c2740",
+        "running": "#46d07a",
+        "pending": "#e3a92b",
+        "failed": "#ff6b63",
+        "completed": "#8b94a3",
     },
     "light": {
-        "bg": "#f5f6f8",
+        "bg": "#eef1f7",
         "surface": "#ffffff",
-        "surface2": "#eceef1",
-        "text": "#1f2328",
-        "text_muted": "#656d76",
-        "border": "#d0d7de",
-        "accent": "#2f6feb",
+        "surface2": "#f5f7fb",
+        "surface3": "#e8edf6",
+        "text": "#1a2030",
+        "text_muted": "#5a6478",
+        "border": "#dce2ec",
+        "accent": "#3b6fe0",
+        "accent_hover": "#2d61d6",
         "accent_text": "#ffffff",
-        "running": "#1a7f37",
+        "accent_soft": "#e9effd",
+        "running": "#1a8f40",
         "pending": "#9a6700",
-        "failed": "#cf222e",
+        "failed": "#d22f2a",
         "completed": "#6e7781",
     },
 }
@@ -138,7 +146,7 @@ def _build_palette(tokens: dict[str, str]) -> QPalette:
     pal.setColor(QPalette.ColorRole.Window, bg)
     pal.setColor(QPalette.ColorRole.WindowText, text)
     pal.setColor(QPalette.ColorRole.Base, surface)
-    pal.setColor(QPalette.ColorRole.AlternateBase, bg)
+    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(tokens["surface2"]))
     pal.setColor(QPalette.ColorRole.Text, text)
     pal.setColor(QPalette.ColorRole.Button, surface)
     pal.setColor(QPalette.ColorRole.ButtonText, text)
@@ -148,6 +156,14 @@ def _build_palette(tokens: dict[str, str]) -> QPalette:
     pal.setColor(QPalette.ColorRole.Highlight, accent)
     pal.setColor(QPalette.ColorRole.HighlightedText, QColor(tokens["accent_text"]))
     pal.setColor(QPalette.ColorRole.Link, accent)
+    # Greyed roles so disabled controls read as inactive (not just lower-contrast
+    # text on an identical background).
+    for role in (
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.Text,
+        QPalette.ColorRole.ButtonText,
+    ):
+        pal.setColor(QPalette.ColorGroup.Disabled, role, muted)
     return pal
 
 

@@ -86,6 +86,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Visual redesign of the desktop GUI** for a more modern, polished feel. A
+  refreshed light/dark palette and a comprehensive stylesheet pass (rounded
+  cards, modern buttons/inputs/tabs/context-menus/scrollbars, and a pill-style
+  connection indicator in the header). The Queue and Cluster screens now show
+  at-a-glance **metric tiles** (my jobs / running / pending / cluster CPU·GPU,
+  and node online/down/draining counts) in place of the old run-on summary
+  line; the History runs table reuses the Queue's colour-coded **state pills**;
+  capacity bars gained rounded tracks and clearer labels; the analytics and
+  per-job **usage charts** (QtCharts + pyqtgraph) are themed to match; the Job
+  Detail and About pages are grouped into cards; and the app/brand mark was
+  refreshed. Behaviour, data, views, actions, and shortcuts are unchanged — this
+  is a presentation-layer refresh only.
 - `slurmhub` now launches the desktop GUI by default; pass `--tui` for the terminal
   UI (handy over SSH) or `--gui` to force the GUI. `--demo` works for both.
 - TUI packages (`textual`, `rich`) were moved out of core dependencies into a

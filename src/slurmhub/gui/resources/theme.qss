@@ -1,41 +1,71 @@
 /* SlurmHub hand-rolled QSS template.
  *
- * Tokens (``$name``) are substituted per theme by slurmhub.qt.theme. QSS itself
+ * Tokens (``$name``) are substituted per theme by slurmhub.gui.theme. QSS itself
  * never uses ``$``, so string.Template.safe_substitute is collision-free with
  * the ``{ }`` rule braces. State colours are applied to cells via a
  * QStyledItemDelegate, not here. */
 
+/* ── Base ──────────────────────────────────────────────────────── */
 QWidget {
     background-color: $bg;
     color: $text;
-    font-size: 10pt;
+    font-size: 13px;
+}
+
+/* Labels/checkboxes are transparent so they inherit whatever surface (card,
+ * page, sidebar) sits behind them rather than punching a flat bg rectangle. */
+QLabel, QCheckBox, QRadioButton {
+    background: transparent;
 }
 
 QToolTip {
     background-color: $surface;
     color: $text;
     border: 1px solid $border;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+QSplitter::handle {
+    background: transparent;
+}
+QSplitter::handle:vertical {
+    height: 12px;
+}
+QSplitter::handle:horizontal {
+    width: 12px;
 }
 
 /* ── Sidebar shell ─────────────────────────────────────────────── */
 #Sidebar {
     background-color: $surface2;
+    border: none;
     border-right: 1px solid $border;
 }
 
 #SidebarBrand {
     color: $text;
-    font-size: 13pt;
-    font-weight: bold;
-    padding: 12px 14px 8px 14px;
+    font-size: 17px;
+    font-weight: 700;
+    padding: 0;
+}
+
+#SidebarSection {
+    color: $text_muted;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 12px 16px 4px 16px;
 }
 
 #ProfileSwitcher {
-    margin: 4px 10px 8px 10px;
-    padding: 5px 8px;
+    margin: 0 12px 6px 12px;
+    padding: 7px 10px;
     background-color: $surface;
     border: 1px solid $border;
-    border-radius: 6px;
+    border-radius: 8px;
+}
+#ProfileSwitcher:hover {
+    border-color: $accent;
 }
 
 #NavList {
@@ -45,21 +75,21 @@ QToolTip {
 }
 
 #NavList::item {
-    padding: 9px 14px;
-    margin: 2px 8px;
-    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 2px 10px;
+    border-radius: 8px;
     color: $text_muted;
 }
 
 #NavList::item:hover {
-    background-color: $surface;
+    background-color: $surface3;
     color: $text;
 }
 
 #NavList::item:selected {
     background-color: $accent;
     color: $accent_text;
-    font-weight: bold;
+    font-weight: 600;
 }
 
 #DocsLink {
@@ -67,63 +97,81 @@ QToolTip {
     border: none;
     color: $text_muted;
     text-align: left;
-    padding: 8px 14px;
+    padding: 9px 16px;
 }
-
 #DocsLink:hover {
     color: $accent;
+    background: transparent;
 }
 
 #VersionLabel {
     color: $text_muted;
-    padding: 0 14px 10px 14px;
-    font-size: 8pt;
+    padding: 2px 16px 12px 16px;
+    font-size: 11px;
 }
 
 /* ── Header connection strip ───────────────────────────────────── */
 #HeaderStrip {
     background-color: $surface2;
+    border: none;
     border-bottom: 1px solid $border;
-    padding: 6px 12px;
+    padding: 10px 16px;
 }
 
 #HeaderHost {
-    font-weight: bold;
+    font-weight: 700;
+    font-size: 14px;
     color: $text;
 }
 
+/* Plain muted/secondary text (summaries, hints, statuses). The optional
+ * [state] property tints the text only — no chrome. */
 #HeaderStatus {
     color: $text_muted;
+    background: transparent;
 }
+#HeaderStatus[state="error"]   { color: $failed; }
+#HeaderStatus[state="loading"] { color: $pending; }
+#HeaderStatus[state="ok"]      { color: $running; }
 
-#HeaderStatus[state="error"] {
-    color: $failed;
-    font-weight: bold;
+/* The connection status in the header strip — a rounded pill that changes
+ * colour with the connection state. */
+#ConnPill {
+    color: $text_muted;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 11px;
+    padding: 3px 11px;
 }
+#ConnPill[state="error"]   { color: $failed;  border-color: $failed; }
+#ConnPill[state="loading"] { color: $pending; border-color: $pending; }
+#ConnPill[state="ok"]      { color: $running; border-color: $running; }
 
-#HeaderStatus[state="loading"] {
-    color: $pending;
+/* ── Page headings / cards ─────────────────────────────────────── */
+#ViewTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: $text;
 }
-
-#HeaderStatus[state="ok"] {
-    color: $running;
+#ViewSubtitle, #MutedText {
+    color: $text_muted;
 }
 
 #DetailPanel {
     background-color: $surface;
     border: 1px solid $border;
-    border-radius: 6px;
+    border-radius: 10px;
 }
 
 QFrame#JobCard {
     background-color: $surface;
     border: 1px solid $border;
-    border-radius: 10px;
+    border-radius: 12px;
 }
 
 QLabel#JobCardTitle {
-    font-weight: bold;
-    font-size: 11pt;
+    font-weight: 700;
+    font-size: 14px;
     color: $text;
 }
 
@@ -137,119 +185,320 @@ QWidget#JobUsagePlot {
     background-color: $surface;
 }
 
+/* Stat tiles — compact metric cards used on Queue / Cluster headers. */
+QFrame#StatTile {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 10px;
+}
+QLabel#StatLabel {
+    color: $text_muted;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#StatValue {
+    color: $text;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+/* Job state pill (Job Detail header). */
+QLabel#StatePill {
+    background: $surface2;
+    border: 1px solid $border;
+    border-radius: 11px;
+    padding: 3px 12px;
+    font-weight: 600;
+}
+QLabel#StatePill[state="running"]   { color: $running;   border-color: $running; }
+QLabel#StatePill[state="pending"]   { color: $pending;   border-color: $pending; }
+QLabel#StatePill[state="failed"]    { color: $failed;    border-color: $failed; }
+QLabel#StatePill[state="completed"] { color: $completed; border-color: $completed; }
+
 #UpdateBanner {
     background-color: $accent;
+    border: none;
 }
-
 #UpdateBanner QLabel {
     color: $accent_text;
+    background: transparent;
 }
-
 #UpdateBanner QPushButton {
     color: $accent_text;
     background: transparent;
     border: none;
+    font-weight: 700;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────── */
+QTabWidget::pane {
+    border: none;
+    border-top: 1px solid $border;
+    top: -1px;
+}
+QTabBar {
+    qproperty-drawBase: 0;
+}
+QTabBar::tab {
+    background: transparent;
+    color: $text_muted;
+    padding: 8px 18px;
+    margin-right: 2px;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+QTabBar::tab:hover {
+    color: $text;
+}
+QTabBar::tab:selected {
+    color: $accent;
+    border-bottom: 2px solid $accent;
+    font-weight: 600;
+}
+
+/* ── Group boxes ───────────────────────────────────────────────── */
+QGroupBox {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 12px;
+    margin-top: 12px;
+    padding-top: 6px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 0 6px;
+    color: $text_muted;
+    font-weight: 700;
 }
 
 /* ── Tables ────────────────────────────────────────────────────── */
+QHeaderView {
+    background-color: transparent;
+}
 QHeaderView::section {
     background-color: $surface2;
     color: $text_muted;
-    padding: 6px 8px;
+    padding: 8px 10px;
     border: none;
     border-bottom: 1px solid $border;
-    font-weight: bold;
+    font-weight: 700;
+}
+QHeaderView::section:first {
+    border-top-left-radius: 10px;
+}
+QHeaderView::section:last {
+    border-top-right-radius: 10px;
 }
 
 QTableView {
     background-color: $surface;
-    alternate-background-color: $bg;
-    gridline-color: $border;
+    alternate-background-color: $surface2;
+    gridline-color: transparent;
     selection-background-color: $accent;
     selection-color: $accent_text;
     border: 1px solid $border;
-    border-radius: 6px;
+    border-radius: 10px;
+    outline: none;
 }
-
 QTableView::item {
-    padding: 4px 6px;
+    padding: 6px 8px;
+    border: none;
+}
+QTableView::item:hover {
+    background-color: $surface3;
+}
+QTableView QTableCornerButton::section {
+    background-color: $surface2;
+    border: none;
 }
 
 QTableWidget#JobDetailsTable {
     background-color: transparent;
     alternate-background-color: $surface2;
     border: none;
-    gridline-color: $border;
+    border-radius: 0;
+    gridline-color: transparent;
 }
-
 QTableWidget#JobDetailsTable::item {
-    padding: 6px 8px;
+    padding: 7px 8px;
 }
 
-/* ── Buttons / inputs ──────────────────────────────────────────── */
+/* ── Buttons ───────────────────────────────────────────────────── */
 QPushButton {
     background-color: $surface;
     border: 1px solid $border;
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: 8px;
+    padding: 7px 14px;
     color: $text;
 }
-
 QPushButton:hover {
     border-color: $accent;
+    background-color: $surface3;
 }
-
 QPushButton:pressed {
     background-color: $surface2;
+}
+QPushButton:disabled {
+    color: $text_muted;
+    border-color: $border;
+    background-color: $surface;
 }
 
 QPushButton#Primary {
     background-color: $accent;
     color: $accent_text;
-    border: none;
-    font-weight: bold;
+    border: 1px solid $accent;
+    font-weight: 600;
+}
+QPushButton#Primary:hover {
+    background-color: $accent_hover;
+    border-color: $accent_hover;
+}
+QPushButton#Primary:disabled {
+    background-color: $surface3;
+    border-color: $border;
+    color: $text_muted;
 }
 
 QPushButton#Danger {
     border-color: $failed;
     color: $failed;
+    font-weight: 600;
+}
+QPushButton#Danger:hover {
+    background-color: $failed;
+    color: $accent_text;
+    border-color: $failed;
+}
+QPushButton#Danger:disabled {
+    border-color: $border;
+    color: $text_muted;
+    background-color: $surface;
 }
 
+/* ── Inputs ────────────────────────────────────────────────────── */
 QLineEdit, QSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
     background-color: $surface;
     border: 1px solid $border;
-    border-radius: 6px;
-    padding: 5px 8px;
+    border-radius: 8px;
+    padding: 6px 9px;
+    color: $text;
     selection-background-color: $accent;
     selection-color: $accent_text;
 }
-
-QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {
+QLineEdit:hover, QSpinBox:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover {
+    border-color: $text_muted;
+}
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border-color: $accent;
 }
 
+QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+QComboBox QAbstractItemView {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 4px;
+    outline: none;
+    selection-background-color: $accent;
+    selection-color: $accent_text;
+}
+QSpinBox::up-button, QSpinBox::down-button {
+    width: 16px;
+    border: none;
+    background: transparent;
+}
+
+QCheckBox {
+    spacing: 8px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid $border;
+    border-radius: 5px;
+    background-color: $surface;
+}
+QCheckBox::indicator:hover {
+    border-color: $accent;
+}
+QCheckBox::indicator:checked {
+    background-color: $accent;
+    border-color: $accent;
+}
+
+/* ── Menus ─────────────────────────────────────────────────────── */
+QMenu {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 10px;
+    padding: 5px;
+}
+QMenu::item {
+    padding: 7px 22px 7px 14px;
+    border-radius: 6px;
+    color: $text;
+}
+QMenu::item:selected {
+    background-color: $accent;
+    color: $accent_text;
+}
+QMenu::item:disabled {
+    color: $text_muted;
+    background: transparent;
+}
+QMenu::separator {
+    height: 1px;
+    background-color: $border;
+    margin: 5px 10px;
+}
+
+/* ── Status bar ────────────────────────────────────────────────── */
 QStatusBar {
     background-color: $surface2;
     color: $text_muted;
     border-top: 1px solid $border;
 }
-
-QScrollBar:vertical {
-    background: transparent;
-    width: 10px;
-    margin: 0;
+QStatusBar::item {
+    border: none;
 }
 
+/* ── Scrollbars ────────────────────────────────────────────────── */
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 2px;
+}
 QScrollBar::handle:vertical {
     background: $border;
     border-radius: 5px;
-    min-height: 24px;
+    min-height: 30px;
 }
-
 QScrollBar::handle:vertical:hover {
     background: $text_muted;
 }
-
+QScrollBar:horizontal {
+    background: transparent;
+    height: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: $border;
+    border-radius: 5px;
+    min-width: 30px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: $text_muted;
+}
 QScrollBar::add-line, QScrollBar::sub-line {
     height: 0;
+    width: 0;
+}
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: transparent;
 }

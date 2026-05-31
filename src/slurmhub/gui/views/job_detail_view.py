@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from slurmhub.gui.controller import AppController
 from slurmhub.gui.dialogs.confirm import confirm
 from slurmhub.gui.models.jobs_model import format_mem_mb
-from slurmhub.gui.theme import token
+from slurmhub.gui.theme import STATE_TOKENS, token
 from slurmhub.gui.widgets import CapacityBar
 from slurmhub.gui.workers import run_async
 from slurmhub.slurm.scontrol import fetch_job_details
@@ -98,26 +98,45 @@ class JobDetailView(QWidget):
         back = QPushButton("← Back")
         back.clicked.connect(self.navigator.go_back)
         top.addWidget(back)
-        self.title = QLabel(f"{self.job.job_id} · {self.job.name} · {self.job.state}")
-        self.title.setObjectName("HeaderHost")
-        top.addWidget(self.title, 1)
+        self.title = QLabel(f"{self.job.job_id} · {self.job.name}")
+        self.title.setObjectName("ViewTitle")
+        top.addWidget(self.title)
+        self.state_pill = QLabel(self.job.state)
+        self.state_pill.setObjectName("StatePill")
+        state_key = STATE_TOKENS.get((self.job.state or "").upper())
+        if state_key in ("running", "pending", "failed", "completed"):
+            self.state_pill.setProperty("state", state_key)
+        top.addWidget(self.state_pill)
+        top.addStretch(1)
         layout.addLayout(top)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         body = QWidget()
         body_layout = QVBoxLayout(body)
-        body_layout.setSpacing(10)
+        body_layout.setContentsMargins(0, 0, 4, 0)
+        body_layout.setSpacing(12)
+
+        usage_card = QFrame()
+        usage_card.setObjectName("JobCard")
+        res_layout = QVBoxLayout(usage_card)
+        res_layout.setContentsMargins(16, 14, 16, 14)
+        res_layout.setSpacing(8)
+        res_title = QLabel("Resource usage")
+        res_title.setObjectName("JobCardTitle")
+        res_layout.addWidget(res_title)
 
         self.time_bar = CapacityBar("Time")
         self.mem_bar = CapacityBar("Memory")
-        body_layout.addWidget(self.time_bar)
-        body_layout.addWidget(self.mem_bar)
+        res_layout.addWidget(self.time_bar)
+        res_layout.addWidget(self.mem_bar)
 
         self.gpu_container = QWidget()
         self.gpu_layout = QVBoxLayout(self.gpu_container)
         self.gpu_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.addWidget(self.gpu_container)
+        res_layout.addWidget(self.gpu_container)
+        body_layout.addWidget(usage_card)
 
         self.usage_card = QFrame()
         self.usage_card.setObjectName("JobCard")
@@ -186,7 +205,7 @@ class JobDetailView(QWidget):
         card_layout.setContentsMargins(12, 12, 12, 12)
         card_layout.setSpacing(6)
 
-        details_title = QLabel("Structured job details")
+        details_title = QLabel("Details")
         details_title.setObjectName("JobCardTitle")
         card_layout.addWidget(details_title)
 
@@ -575,9 +594,11 @@ class JobDetailView(QWidget):
             self.cpu_curve.setData([], [])
             self.cpu_alloc_curve.setData([], [])
             self.usage_plot.setVisible(False)
+            self.usage_subtitle.setVisible(False)
+            self.usage_hover.setVisible(False)
+            self.usage_empty.setText("No usage snapshots captured yet.")
             self.usage_empty.setVisible(True)
             self.usage_title.setText("Usage timeline")
-            self.usage_hover.setText("No usage snapshots captured yet.")
             return
 
         gpu_x: list[int] = []
@@ -606,11 +627,13 @@ class JobDetailView(QWidget):
             self.cpu_curve.setData([], [])
             self.cpu_alloc_curve.setData([], [])
             self.usage_plot.setVisible(False)
+            self.usage_subtitle.setVisible(False)
+            self.usage_hover.setVisible(False)
+            self.usage_empty.setText(
+                "Snapshots found, but no utilisation values were captured."
+            )
             self.usage_empty.setVisible(True)
             self.usage_title.setText(f"Usage timeline ({len(points)} samples)")
-            self.usage_hover.setText(
-                "Snapshots found, but no utilization values were captured."
-            )
             return
 
         self.gpu_curve.setData(gpu_x, gpu_y)
@@ -630,6 +653,8 @@ class JobDetailView(QWidget):
         self._sync_usage_plot_views()
 
         self.usage_plot.setVisible(True)
+        self.usage_subtitle.setVisible(True)
+        self.usage_hover.setVisible(True)
         self.usage_empty.setVisible(False)
         self.usage_title.setText(f"Usage timeline ({len(points)} samples)")
         self.usage_hover.setText("Hover the chart to inspect a sample.")

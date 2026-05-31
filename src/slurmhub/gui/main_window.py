@@ -101,9 +101,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        brand_row = QWidget()
+        brand_layout = QHBoxLayout(brand_row)
+        brand_layout.setContentsMargins(16, 16, 16, 2)
+        brand_layout.setSpacing(9)
+        logo = QLabel()
+        logo.setPixmap(app_icon().pixmap(QSize(24, 24)))
+        brand_layout.addWidget(logo)
         brand = QLabel("SlurmHub")
         brand.setObjectName("SidebarBrand")
-        layout.addWidget(brand)
+        brand.setContentsMargins(0, 0, 0, 0)
+        brand_layout.addWidget(brand, 1)
+        layout.addWidget(brand_row)
+
+        section = QLabel("CLUSTER")
+        section.setObjectName("SidebarSection")
+        layout.addWidget(section)
 
         self.profile_switcher = QComboBox()
         self.profile_switcher.setObjectName("ProfileSwitcher")
@@ -112,6 +125,10 @@ class MainWindow(QMainWindow):
             self.profile_switcher.setCurrentText(self.controller.active_profile)
         self.profile_switcher.setEnabled(len(self.controller.profile_names) > 1)
         layout.addWidget(self.profile_switcher)
+
+        nav_section = QLabel("VIEWS")
+        nav_section.setObjectName("SidebarSection")
+        layout.addWidget(nav_section)
 
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("NavList")
@@ -171,7 +188,7 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
 
         self.header_status = QLabel("")
-        self.header_status.setObjectName("HeaderStatus")
+        self.header_status.setObjectName("ConnPill")
         layout.addWidget(self.header_status)
 
         return header
@@ -199,21 +216,37 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
 
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(12)
+        logo = QLabel()
+        logo.setPixmap(app_icon().pixmap(QSize(40, 40)))
+        brand_row.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
+        heading = QVBoxLayout()
+        heading.setSpacing(1)
         title = QLabel(f"SlurmHub v{_app_version()}")
-        title.setObjectName("HeaderHost")
-        layout.addWidget(title)
-
+        title.setObjectName("ViewTitle")
+        heading.addWidget(title)
         intro = QLabel(
             "Monitor Slurm jobs in real time, inspect completed runs, and "
             "review persisted CPU/GPU/memory usage over time."
         )
+        intro.setObjectName("MutedText")
         intro.setWordWrap(True)
-        layout.addWidget(intro)
+        heading.addWidget(intro)
+        brand_row.addLayout(heading, 1)
+        layout.addLayout(brand_row)
 
+        nav_card = QFrame()
+        nav_card.setObjectName("JobCard")
+        nav_layout = QVBoxLayout(nav_card)
+        nav_layout.setContentsMargins(16, 14, 16, 14)
+        nav_layout.setSpacing(4)
+        nav_title = QLabel("Quick navigation")
+        nav_title.setObjectName("JobCardTitle")
+        nav_layout.addWidget(nav_title)
         quick = QLabel(
-            "Quick navigation:\n"
             "• Queue: live jobs and actions.\n"
             "• Cluster: queue pressure and node health.\n"
             "• History: completed runs, favourites, notes, and analytics.\n"
@@ -221,7 +254,8 @@ class MainWindow(QMainWindow):
         )
         quick.setObjectName("AboutHelpText")
         quick.setWordWrap(True)
-        layout.addWidget(quick)
+        nav_layout.addWidget(quick)
+        layout.addWidget(nav_card)
 
         actions = QHBoxLayout()
 
@@ -247,7 +281,7 @@ class MainWindow(QMainWindow):
             "Tip: in Queue, right-click a row for Details, Log, and "
             "cancel/requeue/hold/release actions."
         )
-        tip.setObjectName("HeaderStatus")
+        tip.setObjectName("MutedText")
         tip.setWordWrap(True)
         layout.addWidget(tip)
         layout.addStretch(1)

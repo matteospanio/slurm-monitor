@@ -19,11 +19,12 @@ from PySide6.QtCharts import (
     QChartView,
     QValueAxis,
 )
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import QMargins, Qt, QThreadPool
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -39,7 +40,9 @@ from PySide6.QtWidgets import (
 from slurmhub.db.models import utcnow
 from slurmhub.gui.controller import AppController
 from slurmhub.gui.icons import button_icon
+from slurmhub.gui.models.delegates import StateBadgeDelegate
 from slurmhub.gui.models.jobs_model import format_mem_mb
+from slurmhub.gui.theme import token
 from slurmhub.gui.models.simple_table import ROW_ROLE, Column, SimpleTableModel
 from slurmhub.gui.workers import FetchTask
 from slurmhub.slurm.squeue import SlurmJob
@@ -173,6 +176,8 @@ class HistoryView(QWidget):
         self.model = SimpleTableModel(_RUN_COLUMNS)
         self.table = QTableView()
         self.table.setModel(self.model)
+        # Column 3 is "State" — render it as the same colour-coded pill as Queue.
+        self.table.setItemDelegateForColumn(3, StateBadgeDelegate(self.table))
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -203,19 +208,43 @@ class HistoryView(QWidget):
     def _build_usage_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 6, 0, 0)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(12)
 
+        summary_card = QFrame()
+        summary_card.setObjectName("JobCard")
+        sc_layout = QVBoxLayout(summary_card)
+        sc_layout.setContentsMargins(16, 12, 16, 12)
+        sc_layout.setSpacing(4)
+        sc_title = QLabel("Totals")
+        sc_title.setObjectName("JobCardTitle")
+        sc_layout.addWidget(sc_title)
         self.usage_summary = QLabel("")
         self.usage_summary.setObjectName("HeaderStatus")
         self.usage_summary.setWordWrap(True)
-        layout.addWidget(self.usage_summary)
+        sc_layout.addWidget(self.usage_summary)
+        layout.addWidget(summary_card)
+
+        chart_card = QFrame()
+        chart_card.setObjectName("JobCard")
+        cc_layout = QVBoxLayout(chart_card)
+        cc_layout.setContentsMargins(16, 12, 16, 12)
+        cc_layout.setSpacing(8)
+        cc_title = QLabel("Resource hours by profile")
+        cc_title.setObjectName("JobCardTitle")
+        cc_layout.addWidget(cc_title)
 
         self.chart = QChart()
         self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        self.chart.setBackgroundVisible(False)
+        self.chart.setMargins(QMargins(0, 0, 0, 0))
         self.chart.legend().setVisible(True)
+        self.chart.legend().setLabelColor(token("text_muted"))
         self.chart_view = QChartView(self.chart)
         self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        layout.addWidget(self.chart_view, 1)
+        self.chart_view.setStyleSheet("background: transparent; border: none;")
+        cc_layout.addWidget(self.chart_view, 1)
+        layout.addWidget(chart_card, 1)
         return page
 
     # ── filter args ──────────────────────────────────────────────────
@@ -289,7 +318,11 @@ class HistoryView(QWidget):
         rows = totals.per_profile or [totals]
         categories = [r.profile_name or "all" for r in rows]
         gpu_set = QBarSet("GPU-hours")
+        gpu_set.setColor(token("accent"))
+        gpu_set.setBorderColor(token("accent"))
         cpu_set = QBarSet("CPU-hours")
+        cpu_set.setColor(token("running"))
+        cpu_set.setBorderColor(token("running"))
         for r in rows:
             gpu_set.append(r.gpu_hours)
             cpu_set.append(r.cpu_hours)
@@ -303,17 +336,25 @@ class HistoryView(QWidget):
             self.chart.removeAxis(axis)
         self.chart.addSeries(series)
 
+        muted = token("text_muted")
+        border = token("border")
         axis_x = QBarCategoryAxis()
         axis_x.append(categories)
+        axis_x.setLabelsColor(muted)
+        axis_x.setGridLineColor(border)
+        axis_x.setLinePen(border)
         self.chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 
         axis_y = QValueAxis()
         max_val = max([r.gpu_hours for r in rows] + [r.cpu_hours for r in rows] + [1.0])
         axis_y.setRange(0, max_val * 1.1)
+        axis_y.setLabelsColor(muted)
+        axis_y.setGridLineColor(border)
+        axis_y.setLinePen(border)
         self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
-        self.chart.setTitle("Resource hours by profile")
+        self.chart.legend().setLabelColor(muted)
 
     # ── favourites / notes ───────────────────────────────────────────
     def selected_run(self):
