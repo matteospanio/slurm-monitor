@@ -16,8 +16,8 @@ import slurmhub
 _pkg_dir = Path(slurmhub.__file__).parent
 
 # Non-Python data files under the package (e.g. qt/resources/theme.qss,
-# db/alembic.ini).
-datas = collect_data_files("slurmhub")
+# db/alembic.ini) plus qtawesome's bundled icon fonts.
+datas = collect_data_files("slurmhub") + collect_data_files("qtawesome")
 
 # The Alembic migration scripts are imported dynamically by file path at
 # startup, so ship the whole versions/ tree as data alongside env.py.

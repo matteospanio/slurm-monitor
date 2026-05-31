@@ -31,8 +31,10 @@ from PySide6.QtWidgets import (
 
 from slurmhub.qt.controller import AppController, get_filtered_jobs
 from slurmhub.qt.dialogs.confirm import confirm
+from slurmhub.qt.icons import button_icon
 from slurmhub.qt.models.delegates import StateBadgeDelegate
 from slurmhub.qt.models.jobs_model import JOB_ROLE, SORT_ROLE, JobsModel
+from slurmhub.qt.theme import token
 from slurmhub.squeue_parser import SlurmJob
 
 # (label, state value used by get_filtered_jobs).
@@ -96,18 +98,20 @@ class QueueView(QWidget):
         self.search.textChanged.connect(self._on_search_changed)
         bar.addWidget(self.search, 1)
 
-        self.details_button = QPushButton("Details")
+        self.details_button = QPushButton(button_icon("fa5s.eye"), "Details")
         self.details_button.setEnabled(False)
         self.details_button.clicked.connect(self._emit_activated)
         bar.addWidget(self.details_button)
 
-        self.cancel_button = QPushButton("Cancel job")
+        self.cancel_button = QPushButton(
+            button_icon("fa5s.ban", color=token("failed").name()), "Cancel job"
+        )
         self.cancel_button.setObjectName("Danger")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self._cancel_selected)
         bar.addWidget(self.cancel_button)
 
-        self.refresh_button = QPushButton("⟳ Refresh")
+        self.refresh_button = QPushButton(button_icon("fa5s.sync-alt"), "Refresh")
         self.refresh_button.clicked.connect(self.controller.force_refresh_active)
         bar.addWidget(self.refresh_button)
 

@@ -12,6 +12,7 @@ dependencies = [
     "click>=8.1",
     "paramiko>=3.5",
     "pyside6>=6.11.1",
+    "qtawesome>=1.4.2",
     "rich>=14.3.1",
     "sqlalchemy>=2.0",
     "textual>=7.4.0",

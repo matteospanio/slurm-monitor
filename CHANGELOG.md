@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header connection strip, a hand-rolled light/dark theme that follows the OS colour
   scheme, and a link to the online documentation. The existing terminal UI stays
   available via `slurmhub --tui`.
+- **FontAwesome icons** across the GUI (via `qtawesome`) — a cog for Settings and
+  matching glyphs for the other sidebar entries (queue, cluster, history, about), the
+  Documentation link, and toolbar buttons (details, cancel, refresh, favourite, note).
+  The sidebar no longer shows a stray scrollbar when only a few entries are present.
 - New `slurmhub.qt` package holding the entire Qt view layer (`controller`, `theme`,
   `workers`, `main_window`, `app`). The SSH, parser, history-database, and config
   layers are reused unchanged — blocking calls run on a `QThreadPool` and periodic

@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from slurmhub.db.models import utcnow
 from slurmhub.qt.controller import AppController
+from slurmhub.qt.icons import button_icon
 from slurmhub.qt.models.jobs_model import format_mem_mb
 from slurmhub.qt.models.simple_table import ROW_ROLE, Column, SimpleTableModel
 from slurmhub.qt.workers import FetchTask
@@ -150,7 +151,7 @@ class HistoryView(QWidget):
         self.search.returnPressed.connect(self.reload)
         bar.addWidget(self.search, 1)
 
-        refresh = QPushButton("⟳ Refresh")
+        refresh = QPushButton(button_icon("fa5s.sync-alt"), "Refresh")
         refresh.clicked.connect(self.reload)
         bar.addWidget(refresh)
         return bar
@@ -176,9 +177,9 @@ class HistoryView(QWidget):
         layout.addWidget(self.table, 1)
 
         actions = QHBoxLayout()
-        self.fav_button = QPushButton("Toggle ★ favourite")
+        self.fav_button = QPushButton(button_icon("fa5s.star"), "Toggle favourite")
         self.fav_button.clicked.connect(self._toggle_favourite)
-        self.note_button = QPushButton("Edit note…")
+        self.note_button = QPushButton(button_icon("fa5s.pen"), "Edit note…")
         self.note_button.clicked.connect(self._edit_note)
         actions.addWidget(self.fav_button)
         actions.addWidget(self.note_button)

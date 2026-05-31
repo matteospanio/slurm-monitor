@@ -9,7 +9,7 @@ shell, routing, and signal plumbing stay.
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
 
-from PySide6.QtCore import QSettings, Qt, QUrl
+from PySide6.QtCore import QSettings, QSize, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from slurmhub.qt.branding import app_icon
 from slurmhub.qt.controller import AppController
+from slurmhub.qt.icons import button_icon, nav_icon
 from slurmhub.qt.views.cluster_view import ClusterView
 from slurmhub.qt.views.history_view import HistoryView
 from slurmhub.qt.views.queue_view import QueueView
@@ -37,13 +38,13 @@ from slurmhub.qt.views.settings_view import SettingsView
 
 DOCS_URL = "https://matteospanio.github.io/slurmhub/"
 
-# (label, page key) in sidebar order.
+# (label, page key, FontAwesome icon) in sidebar order.
 NAV_ITEMS = [
-    ("Queue", "queue"),
-    ("Cluster", "cluster"),
-    ("History", "history"),
-    ("Settings", "settings"),
-    ("About", "about"),
+    ("Queue", "queue", "fa5s.list-ul"),
+    ("Cluster", "cluster", "fa5s.server"),
+    ("History", "history", "fa5s.history"),
+    ("Settings", "settings", "fa5s.cog"),
+    ("About", "about", "fa5s.info-circle"),
 ]
 
 
@@ -137,17 +138,25 @@ class MainWindow(QMainWindow):
 
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("NavList")
-        for label, key in NAV_ITEMS:
-            item = QListWidgetItem(label)
+        self.nav_list.setIconSize(QSize(16, 16))
+        # Few, fixed entries: never scroll. Letting the list fill the space
+        # below the switcher (stretch 1) keeps its viewport >= its content.
+        self.nav_list.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.nav_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        for label, key, icon_name in NAV_ITEMS:
+            item = QListWidgetItem(nav_icon(icon_name), label)
             item.setData(Qt.ItemDataRole.UserRole, key)
             self.nav_list.addItem(item)
         self.nav_list.setCurrentRow(0)
-        layout.addWidget(self.nav_list)
+        layout.addWidget(self.nav_list, 1)
 
-        layout.addStretch(1)
-
-        docs = QPushButton("\U0001F4D6  Documentation")
+        docs = QPushButton("  Documentation")
         docs.setObjectName("DocsLink")
+        docs.setIcon(button_icon("fa5s.book"))
         docs.setCursor(Qt.CursorShape.PointingHandCursor)
         docs.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DOCS_URL)))
         layout.addWidget(docs)
@@ -208,7 +217,7 @@ class MainWindow(QMainWindow):
             "SlurmHub", f"v{_app_version()} · {DOCS_URL}"
         )
 
-        for _label, key in NAV_ITEMS:
+        for _label, key, _icon in NAV_ITEMS:
             self.stack.addWidget(self._pages[key])
         # The permanent nav pages are never torn down by go_back().
         self._permanent_pages = set(self._pages.values())

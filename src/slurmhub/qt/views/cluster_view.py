@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from slurmhub.qt.controller import AppController
+from slurmhub.qt.icons import button_icon
 from slurmhub.qt.models.jobs_model import format_mem_mb
 from slurmhub.qt.models.simple_table import Column, SimpleTableModel
 from slurmhub.qt.widgets import CapacityBar
@@ -85,7 +86,7 @@ class ClusterView(QWidget):
         self.nodes_summary.setObjectName("HeaderStatus")
         header.addWidget(self.nodes_summary)
         header.addStretch(1)
-        refresh = QPushButton("⟳ Refresh")
+        refresh = QPushButton(button_icon("fa5s.sync-alt"), "Refresh")
         refresh.clicked.connect(self.controller.force_refresh_active)
         header.addWidget(refresh)
         layout.addLayout(header)
