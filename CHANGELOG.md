@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - Unreleased
 
+### Added
+
+- **PySide6 desktop GUI** — a new dashboard interface, now the default `slurmhub`
+  command. It has a left sidebar for navigation, a cluster-profile switcher, a
+  header connection strip, a hand-rolled light/dark theme that follows the OS colour
+  scheme, and a link to the online documentation. The existing terminal UI stays
+  available via `slurmhub --tui`.
+- New `slurmhub.qt` package holding the entire Qt view layer (`controller`, `theme`,
+  `workers`, `main_window`, `app`). The SSH, parser, history-database, and config
+  layers are reused unchanged — blocking calls run on a `QThreadPool` and periodic
+  refresh is driven by per-profile `QTimer`s, mirroring the TUI's worker model.
+- `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
+
+### Changed
+
+- `slurmhub` now launches the desktop GUI by default; pass `--tui` for the terminal
+  UI (handy over SSH) or `--gui` to force the GUI. `--demo` works for both.
+
 ## [1.1.0] - 2026-05-31
 
 ### Added

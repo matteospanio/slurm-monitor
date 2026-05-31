@@ -1,0 +1,202 @@
+/* SlurmHub hand-rolled QSS template.
+ *
+ * Tokens (``$name``) are substituted per theme by slurmhub.qt.theme. QSS itself
+ * never uses ``$``, so string.Template.safe_substitute is collision-free with
+ * the ``{ }`` rule braces. State colours are applied to cells via a
+ * QStyledItemDelegate, not here. */
+
+QWidget {
+    background-color: $bg;
+    color: $text;
+    font-size: 10pt;
+}
+
+QToolTip {
+    background-color: $surface;
+    color: $text;
+    border: 1px solid $border;
+}
+
+/* ── Sidebar shell ─────────────────────────────────────────────── */
+#Sidebar {
+    background-color: $surface2;
+    border-right: 1px solid $border;
+}
+
+#SidebarBrand {
+    color: $text;
+    font-size: 13pt;
+    font-weight: bold;
+    padding: 12px 14px 8px 14px;
+}
+
+#ProfileSwitcher {
+    margin: 4px 10px 8px 10px;
+    padding: 5px 8px;
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 6px;
+}
+
+#NavList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+#NavList::item {
+    padding: 9px 14px;
+    margin: 2px 8px;
+    border-radius: 6px;
+    color: $text_muted;
+}
+
+#NavList::item:hover {
+    background-color: $surface;
+    color: $text;
+}
+
+#NavList::item:selected {
+    background-color: $accent;
+    color: $accent_text;
+    font-weight: bold;
+}
+
+#DocsLink {
+    background: transparent;
+    border: none;
+    color: $text_muted;
+    text-align: left;
+    padding: 8px 14px;
+}
+
+#DocsLink:hover {
+    color: $accent;
+}
+
+#VersionLabel {
+    color: $text_muted;
+    padding: 0 14px 10px 14px;
+    font-size: 8pt;
+}
+
+/* ── Header connection strip ───────────────────────────────────── */
+#HeaderStrip {
+    background-color: $surface2;
+    border-bottom: 1px solid $border;
+    padding: 6px 12px;
+}
+
+#HeaderHost {
+    font-weight: bold;
+    color: $text;
+}
+
+#HeaderStatus {
+    color: $text_muted;
+}
+
+#HeaderStatus[state="error"] {
+    color: $failed;
+    font-weight: bold;
+}
+
+#HeaderStatus[state="loading"] {
+    color: $pending;
+}
+
+#HeaderStatus[state="ok"] {
+    color: $running;
+}
+
+/* ── Tables ────────────────────────────────────────────────────── */
+QHeaderView::section {
+    background-color: $surface2;
+    color: $text_muted;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 1px solid $border;
+    font-weight: bold;
+}
+
+QTableView {
+    background-color: $surface;
+    alternate-background-color: $bg;
+    gridline-color: $border;
+    selection-background-color: $accent;
+    selection-color: $accent_text;
+    border: 1px solid $border;
+    border-radius: 6px;
+}
+
+QTableView::item {
+    padding: 4px 6px;
+}
+
+/* ── Buttons / inputs ──────────────────────────────────────────── */
+QPushButton {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: $text;
+}
+
+QPushButton:hover {
+    border-color: $accent;
+}
+
+QPushButton:pressed {
+    background-color: $surface2;
+}
+
+QPushButton#Primary {
+    background-color: $accent;
+    color: $accent_text;
+    border: none;
+    font-weight: bold;
+}
+
+QPushButton#Danger {
+    border-color: $failed;
+    color: $failed;
+}
+
+QLineEdit, QSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 5px 8px;
+    selection-background-color: $accent;
+    selection-color: $accent_text;
+}
+
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {
+    border-color: $accent;
+}
+
+QStatusBar {
+    background-color: $surface2;
+    color: $text_muted;
+    border-top: 1px solid $border;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: $border;
+    border-radius: 5px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: $text_muted;
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    height: 0;
+}

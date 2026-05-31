@@ -81,7 +81,9 @@ class TestCliWizardWiring:
         app_mock = MagicMock()
         with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
-            result = runner.invoke(cli.main, [])
+            # --tui exercises the (UI-agnostic) wizard + config wiring against
+            # the Textual launch path that this test mocks.
+            result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code == 0, result.output
             wizard_mock.assert_called_once_with(target)
             ctor.assert_called_once()
@@ -115,10 +117,27 @@ class TestCliWizardWiring:
         app_mock = MagicMock()
         with patch("slurmhub.app.SlurmhubApp", return_value=app_mock):
             runner = CliRunner()
-            result = runner.invoke(cli.main, [])
+            result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code == 0, result.output
             wizard_mock.assert_not_called()
             app_mock.run.assert_called_once()
+
+    def test_default_launches_gui_not_tui(self, monkeypatch, tmp_path):
+        """With no UI flag, the GUI is launched and the Textual app is not."""
+        target = tmp_path / "config.toml"
+        target.write_text('[defaults]\n[profiles.test]\nhost = "realhost"\n')
+        monkeypatch.setattr(
+            ConfigLoader, "locate", staticmethod(lambda p: (target, True))
+        )
+        gui_mock = MagicMock()
+        with patch("slurmhub.qt.app.run_gui", gui_mock) as gui, patch(
+            "slurmhub.app.SlurmhubApp"
+        ) as tui_ctor:
+            runner = CliRunner()
+            result = runner.invoke(cli.main, [])
+            assert result.exit_code == 0, result.output
+            gui.assert_called_once()
+            tui_ctor.assert_not_called()
 
     def test_host_flag_skips_wizard(self, monkeypatch, tmp_path):
         """--host should bypass the wizard entirely, even with no config on disk."""
@@ -132,7 +151,7 @@ class TestCliWizardWiring:
         app_mock = MagicMock()
         with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
-            result = runner.invoke(cli.main, ["--host", "manualhost"])
+            result = runner.invoke(cli.main, ["--host", "manualhost", "--tui"])
             assert result.exit_code == 0, result.output
             wizard_mock.assert_not_called()
             (passed_config,), _ = ctor.call_args

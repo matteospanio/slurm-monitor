@@ -79,6 +79,27 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     return config
 
 
+def _launch(
+    app_config: AppConfig,
+    demo: bool,
+    database,
+    use_tui: bool,
+) -> None:
+    """Launch the chosen interface against the given config + database.
+
+    The GUI is the default; ``use_tui`` opts back into the Textual TUI (handy
+    for headless/SSH-only sessions). Both share the same data + history layer.
+    """
+    if use_tui:
+        from slurmhub.app import SlurmhubApp
+
+        SlurmhubApp(app_config, demo=demo, database=database).run()
+    else:
+        from slurmhub.qt.app import run_gui
+
+        run_gui(app_config, demo=demo, database=database)
+
+
 def _open_history_database(app_config: AppConfig):
     """Open + migrate + prune the history database, degrading to None on error.
 
@@ -143,15 +164,32 @@ def _open_history_database(app_config: AppConfig):
     help="Launch with built-in fixture data (no SSH connection). "
     "Useful for demos, tutorials, and generating documentation screenshots.",
 )
+@click.option(
+    "--tui",
+    "use_tui",
+    is_flag=True,
+    default=False,
+    help="Launch the terminal UI instead of the desktop GUI "
+    "(useful over SSH / headless sessions).",
+)
+@click.option(
+    "--gui",
+    "force_gui",
+    is_flag=True,
+    default=False,
+    help="Force the desktop GUI (the default). Overrides --tui if both are given.",
+)
 def main(
     config_path: Optional[Path],
     profile_name: Optional[str],
     host: Optional[str],
     list_profiles: bool,
     demo: bool,
+    use_tui: bool,
+    force_gui: bool,
 ) -> None:
-    """slurmhub - TUI application for monitoring Slurm jobs."""
-    from slurmhub.app import SlurmhubApp
+    """slurmhub - monitor Slurm jobs (desktop GUI by default, --tui for the terminal UI)."""
+    use_tui = use_tui and not force_gui
 
     # Demo mode: synthesize a single-profile config pointing at the
     # built-in fixture host and skip SSH/wizard entirely.
@@ -170,8 +208,7 @@ def main(
         # Throwaway in-memory database, seeded with sample history. Never
         # touches ~/.config.
         database = open_demo_database()
-        app = SlurmhubApp(app_config, demo=True, database=database)
-        app.run()
+        _launch(app_config, demo=True, database=database, use_tui=use_tui)
         return
 
     # When the user supplied --host or --config, skip the wizard entirely:
@@ -220,5 +257,4 @@ def main(
         app_config = AppConfig(profiles={profile_name: profile})
 
     database = _open_history_database(app_config)
-    app = SlurmhubApp(app_config, database=database)
-    app.run()
+    _launch(app_config, demo=False, database=database, use_tui=use_tui)
