@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: slurmhub-linux
+          - os: macos-latest
+            artifact: slurmhub-macos
+          - os: windows-latest
+            artifact: slurmhub-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install project + build tools
+        run: uv sync --group build --python 3.12
+
+      - name: Build with PyInstaller
+        run: uv run --python 3.12 pyinstaller slurmhub.spec --noconfirm
+
+      - name: Archive (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" slurmhub
+          shasum -a 256 "${{ matrix.artifact }}.tar.gz" > "${{ matrix.artifact }}.tar.gz.sha256"
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/slurmhub -DestinationPath "${{ matrix.artifact }}.zip"
+          (Get-FileHash "${{ matrix.artifact }}.zip" -Algorithm SHA256).Hash |
+            Out-File -Encoding ascii "${{ matrix.artifact }}.zip.sha256"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.zip.sha256
+          if-no-files-found: ignore
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.zip.sha256
+          fail_on_unmatched_files: false

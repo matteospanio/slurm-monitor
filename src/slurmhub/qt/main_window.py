@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self._tray = self._build_tray()
         self._connect_signals()
         self._sync_active_profile_view()
+        self._start_update_check()
 
     # ── construction ─────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -102,6 +103,7 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
+        right_layout.addWidget(self._build_update_banner())
         right_layout.addWidget(self._build_header())
 
         self.stack = QStackedWidget()
@@ -155,6 +157,22 @@ class MainWindow(QMainWindow):
         layout.addWidget(version_label)
 
         return sidebar
+
+    def _build_update_banner(self) -> QWidget:
+        self.update_banner = QFrame()
+        self.update_banner.setObjectName("UpdateBanner")
+        layout = QHBoxLayout(self.update_banner)
+        layout.setContentsMargins(12, 6, 12, 6)
+        self.update_label = QLabel("")
+        self.update_label.setObjectName("HeaderHost")
+        self.update_label.setOpenExternalLinks(True)
+        layout.addWidget(self.update_label, 1)
+        dismiss = QPushButton("✕")
+        dismiss.setFlat(True)
+        dismiss.clicked.connect(self.update_banner.hide)
+        layout.addWidget(dismiss)
+        self.update_banner.hide()
+        return self.update_banner
 
     def _build_header(self) -> QWidget:
         header = QFrame()
@@ -231,6 +249,27 @@ class MainWindow(QMainWindow):
     def _quit(self) -> None:
         self._force_quit = True
         self.close()
+
+    # ── update check ─────────────────────────────────────────────────
+    def _start_update_check(self) -> None:
+        if self.controller.demo:
+            return
+        from slurmhub.qt.updater import check_for_update, current_version
+        from slurmhub.qt.workers import run_async
+
+        version_str = current_version()
+        run_async(
+            lambda: check_for_update(version_str), self._on_update_check
+        )
+
+    def _on_update_check(self, info) -> None:
+        if info is None:
+            return
+        self.update_label.setText(
+            f"A new version <b>{info.version}</b> is available — "
+            f'<a href="{info.url}">Download</a>'
+        )
+        self.update_banner.show()
 
     # ── sub-view navigation ──────────────────────────────────────────
     def open_subview(self, widget: QWidget) -> None:

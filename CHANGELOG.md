@@ -58,6 +58,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extra job actions** — requeue, hold, and release (`scontrol`), plus copy job ID /
   copy log path and "View log", from a right-click context menu on the queue and as
   buttons on the Job Detail page.
+- **Cross-platform binaries** — a `release.yml` workflow builds standalone Linux /
+  macOS / Windows bundles with PyInstaller (`slurmhub.spec`) on each `v*` tag and
+  attaches them (with SHA-256 checksums) to the GitHub Release. A new
+  [Download](https://matteospanio.github.io/slurmhub/getting-started/download.html)
+  docs page lists them.
+- **In-app update check** — on launch the GUI compares the running version against the
+  latest GitHub release and shows a dismissible "update available" banner linking to
+  the download page. Notify-only; nothing is downloaded automatically.
+
+### Changed
+
+- `tests.yml` now installs the Qt system libraries and runs the GUI suite headlessly
+  (`QT_QPA_PLATFORM=offscreen`) alongside the existing Textual tests.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed

@@ -3,6 +3,12 @@
 `slurmhub` is published on [PyPI](https://pypi.org/project/slurmhub/), so the install
 boils down to a single command from your tool of choice.
 
+```{tip}
+Prefer a **double-click desktop app** with no Python install? Grab a standalone
+binary from the [Download page](download.md) instead. A PyPI install gives you both
+the desktop GUI (default) and the terminal UI (`slurmhub --tui`).
+```
+
 ## Requirements
 
 | Component | Version |

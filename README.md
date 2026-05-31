@@ -68,9 +68,18 @@ pip install --user slurmhub
 Then:
 
 ```bash
-slurmhub --demo    # try it without an SSH connection
+slurmhub --demo    # try it without an SSH connection (desktop GUI)
 slurmhub           # run against your configured cluster(s)
+slurmhub --tui     # the classic terminal UI (handy over SSH)
 ```
+
+### Desktop app downloads
+
+From v1.2.0 SlurmHub has a **PySide6 desktop GUI** (the default) as well as the
+terminal UI. Standalone binaries that bundle their own Python are attached to each
+[GitHub Release](https://github.com/matteospanio/slurmhub/releases/latest) for
+Linux, macOS, and Windows — see the [Download page](https://matteospanio.github.io/slurmhub/getting-started/download.html).
+The app checks for newer releases on launch and shows a non-blocking banner.
 
 Or clone and run from source (for development):
 

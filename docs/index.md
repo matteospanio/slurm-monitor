@@ -61,6 +61,7 @@ collects the SSH details and writes `~/.config/slurmhub/config.toml` for you.
 :caption: Getting started
 
 getting-started/installation
+getting-started/download
 getting-started/quickstart
 getting-started/ssh-setup
 ```

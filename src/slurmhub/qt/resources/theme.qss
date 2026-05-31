@@ -115,6 +115,20 @@ QToolTip {
     border-radius: 6px;
 }
 
+#UpdateBanner {
+    background-color: $accent;
+}
+
+#UpdateBanner QLabel {
+    color: $accent_text;
+}
+
+#UpdateBanner QPushButton {
+    color: $accent_text;
+    background: transparent;
+    border: none;
+}
+
 /* ── Tables ────────────────────────────────────────────────────── */
 QHeaderView::section {
     background-color: $surface2;
