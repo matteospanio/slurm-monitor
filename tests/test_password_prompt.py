@@ -1,6 +1,6 @@
 """Tests for PasswordPromptScreen widget."""
 
-from slurmhub.widgets.password_prompt import PasswordPromptScreen
+from slurmhub.tui.widgets.password_prompt import PasswordPromptScreen
 
 
 class TestPasswordPromptScreen:

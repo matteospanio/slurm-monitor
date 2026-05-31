@@ -79,7 +79,7 @@ class TestCliWizardWiring:
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
 
         app_mock = MagicMock()
-        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
+        with patch("slurmhub.tui.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
             # --tui exercises the (UI-agnostic) wizard + config wiring against
             # the Textual launch path that this test mocks.
@@ -99,7 +99,7 @@ class TestCliWizardWiring:
         monkeypatch.setattr(
             cli, "run_first_run_wizard", lambda p: None
         )
-        with patch("slurmhub.app.SlurmhubApp") as ctor:
+        with patch("slurmhub.tui.app.SlurmhubApp") as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code != 0
@@ -115,10 +115,10 @@ class TestCliWizardWiring:
         config = self._make_config()
         wizard = MagicMock(return_value=config)
         monkeypatch.setattr(
-            "slurmhub.qt.dialogs.first_run_wizard.run_first_run_wizard_qt", wizard
+            "slurmhub.gui.dialogs.first_run_wizard.run_first_run_wizard_qt", wizard
         )
         gui = MagicMock()
-        with patch("slurmhub.qt.app.run_gui", gui), patch("slurmhub.app.SlurmhubApp") as tui:
+        with patch("slurmhub.gui.app.run_gui", gui), patch("slurmhub.tui.app.SlurmhubApp") as tui:
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code == 0, result.output
@@ -135,7 +135,7 @@ class TestCliWizardWiring:
         wizard_mock = MagicMock()
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
         app_mock = MagicMock()
-        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock):
+        with patch("slurmhub.tui.app.SlurmhubApp", return_value=app_mock):
             runner = CliRunner()
             result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code == 0, result.output
@@ -150,8 +150,8 @@ class TestCliWizardWiring:
             ConfigLoader, "locate", staticmethod(lambda p: (target, True))
         )
         gui_mock = MagicMock()
-        with patch("slurmhub.qt.app.run_gui", gui_mock) as gui, patch(
-            "slurmhub.app.SlurmhubApp"
+        with patch("slurmhub.gui.app.run_gui", gui_mock) as gui, patch(
+            "slurmhub.tui.app.SlurmhubApp"
         ) as tui_ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
@@ -169,7 +169,7 @@ class TestCliWizardWiring:
         wizard_mock = MagicMock()
         monkeypatch.setattr(cli, "run_first_run_wizard", wizard_mock)
         app_mock = MagicMock()
-        with patch("slurmhub.app.SlurmhubApp", return_value=app_mock) as ctor:
+        with patch("slurmhub.tui.app.SlurmhubApp", return_value=app_mock) as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, ["--host", "manualhost", "--tui"])
             assert result.exit_code == 0, result.output

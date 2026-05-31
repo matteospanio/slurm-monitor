@@ -5,7 +5,7 @@ from datetime import timedelta
 from slurmhub.db.engine import Database, _run_migrations, make_engine
 from slurmhub.db.models import Job, UsageSnapshot, utcnow
 from slurmhub.db.repository import Repository
-from slurmhub.squeue_parser import SlurmJob
+from slurmhub.slurm.squeue import SlurmJob
 
 
 def fresh_db() -> Database:

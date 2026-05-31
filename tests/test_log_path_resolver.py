@@ -3,8 +3,8 @@
 import pytest
 
 from slurmhub.config import LogConfig
-from slurmhub.log_path_resolver import LogPathResolver, resolve_log_path
-from slurmhub.squeue_parser import SlurmJob
+from slurmhub.core.log_path_resolver import LogPathResolver, resolve_log_path
+from slurmhub.slurm.squeue import SlurmJob
 
 
 class TestLogPathResolver:

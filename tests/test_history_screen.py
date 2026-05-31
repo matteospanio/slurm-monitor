@@ -3,12 +3,12 @@
 import pytest
 from textual.widgets import DataTable
 
-from slurmhub.app import SlurmhubApp
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
 from slurmhub.db.engine import open_demo_database
-from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
-from slurmhub.widgets.history_screen import HistoryScreen
-from slurmhub.widgets.note_input_screen import NoteInputScreen
+from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME
+from slurmhub.tui.widgets.history_screen import HistoryScreen
+from slurmhub.tui.widgets.note_input_screen import NoteInputScreen
 
 
 def _demo_config() -> AppConfig:

@@ -2,12 +2,12 @@
 
 import pytest
 
-from slurmhub.app import SlurmhubApp
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
 from slurmhub.db.engine import Database, _run_migrations, make_engine
 from slurmhub.db.models import UsageSnapshot
 from slurmhub.db.repository import Repository
-from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
+from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME
 
 
 def _demo_config() -> AppConfig:

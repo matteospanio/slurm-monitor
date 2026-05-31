@@ -14,10 +14,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from slurmhub.app import SlurmhubApp
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
 from slurmhub.db.engine import open_demo_database
-from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
+from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "_static" / "screenshots"
 TERMINAL_SIZE = (120, 36)
@@ -121,7 +121,7 @@ async def shot_help_screen() -> None:
 async def shot_first_run_wizard() -> None:
     """Render the wizard as a stand-alone modal — same code path as on first run."""
     from textual.app import App, ComposeResult
-    from slurmhub.widgets.first_run_wizard import FirstRunWizardScreen
+    from slurmhub.tui.widgets.first_run_wizard import FirstRunWizardScreen
 
     class WizardHost(App):
         CSS = ""

@@ -6,11 +6,11 @@ import pytest
 
 from textual.widgets import DataTable
 
-from slurmhub.app import SlurmhubApp
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
-from slurmhub.sinfo_parser import ClusterCapacity, NodeStats, PartitionStats
-from slurmhub.ssh_wrapper import SSHClient
-from slurmhub.widgets.cluster_dashboard import ClusterDashboardScreen
+from slurmhub.slurm.sinfo import ClusterCapacity, NodeStats, PartitionStats
+from slurmhub.slurm.ssh import SSHClient
+from slurmhub.tui.widgets.cluster_dashboard import ClusterDashboardScreen
 
 
 def _make_capacity() -> ClusterCapacity:
@@ -104,7 +104,7 @@ class TestClusterDashboardPilot:
 
             # Avoid triggering a network fetch when the screen mounts
             with patch(
-                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.tui.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")
@@ -129,7 +129,7 @@ class TestClusterDashboardPilot:
             tab.nodes = _make_nodes()
 
             with patch(
-                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.tui.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")
@@ -150,7 +150,7 @@ class TestClusterDashboardPilot:
             tab.nodes = _make_nodes()
 
             with patch(
-                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.tui.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ) as mock_fetch:
                 await pilot.press("d")
@@ -168,7 +168,7 @@ class TestClusterDashboardPilot:
         async with app.run_test() as pilot:
             # ProfileTab has no cached capacity (default state)
             with patch(
-                "slurmhub.widgets.cluster_dashboard.fetch_sinfo",
+                "slurmhub.tui.widgets.cluster_dashboard.fetch_sinfo",
                 return_value=(_make_capacity(), _make_partitions(), _make_nodes()),
             ):
                 await pilot.press("d")

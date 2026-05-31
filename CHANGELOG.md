@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **read-only**: state-changing actions (scancel / requeue / hold / release) stay
   disabled and the header and queue show a "⤓ cached … refreshing" hint until the
   first live refresh lands — so a possibly-stale job is never acted on.
-- New `slurmhub.qt` package holding the entire Qt view layer (`controller`, `theme`,
+- New `slurmhub.gui` package holding the entire Qt view layer (`controller`, `theme`,
   `workers`, `main_window`, `app`). The SSH, parser, history-database, and config
   layers are reused unchanged — blocking calls run on a `QThreadPool` and periodic
   refresh is driven by per-profile `QTimer`s, mirroring the TUI's worker model.
@@ -82,12 +82,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `tests.yml` now installs the Qt system libraries and runs the GUI suite headlessly
   (`QT_QPA_PLATFORM=offscreen`) alongside the existing Textual tests.
-- `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
+- `pytest-qt` (dev) and a headless `tests/gui/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed
 
 - `slurmhub` now launches the desktop GUI by default; pass `--tui` for the terminal
   UI (handy over SSH) or `--gui` to force the GUI. `--demo` works for both.
+- **Source tree reorganised by concern** into clearly separated namespaces so the
+  codebase is easier to navigate and test: `slurmhub.slurm` (SSH transport + Slurm
+  command parsers + demo fixtures), `slurmhub.core` (job aggregation, queue stats,
+  snapshot cache, log-path resolution), `slurmhub.tui` (the Textual app + widgets,
+  was `slurmhub.app` + `slurmhub.widgets`), `slurmhub.gui` (the PySide6 desktop UI,
+  was `slurmhub.qt`), and the unchanged `slurmhub.db`. Layering is enforced one-way
+  (`config ← slurm ← core ← {db, tui, gui} ← cli`); the only public entry point,
+  `slurmhub.cli:main`, is unchanged. Test modules moved alongside (`tests/qt/` →
+  `tests/gui/`).
+
+### Fixed
+
+- Test suite is now deterministically **offline and non-interactive**: a global
+  `tests/conftest.py` forces the headless Qt platform for the whole suite and turns
+  any real SSH connection into a handled "host unreachable" error, so on-mount
+  refresh workers can no longer reach a live host/agent and pop an SSH-password
+  dialog on a developer machine. Loud tripwires guard `getpass` and Qt input dialogs.
+  Also fixed a hang where `slurmhub --demo` under test launched the real GUI event
+  loop, and same-named test modules across `tests/` directories (pytest now uses
+  `--import-mode=importlib`).
 
 ## [1.1.0] - 2026-05-31
 

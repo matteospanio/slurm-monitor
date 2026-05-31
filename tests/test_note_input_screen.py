@@ -3,7 +3,7 @@
 import pytest
 from textual.app import App, ComposeResult
 
-from slurmhub.widgets.note_input_screen import NoteInputScreen
+from slurmhub.tui.widgets.note_input_screen import NoteInputScreen
 
 
 class _Host(App):

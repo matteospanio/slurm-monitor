@@ -2,9 +2,9 @@
 
 import pytest
 
-from slurmhub.app import SlurmhubApp
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.config import AppConfig, LogConfig, ProfileConfig, SSHConfig
-from slurmhub.widgets.help_screen import HelpScreen
+from slurmhub.tui.widgets.help_screen import HelpScreen
 
 
 def _single_profile_config() -> AppConfig:

@@ -43,3 +43,8 @@ docs = [
 build = [
     "pyinstaller>=6.6",
 ]
+
+[tool.pytest.ini_options]
+# importlib mode lets same-named test modules coexist across directories
+# (e.g. the TUI and GUI both have a test_first_run_wizard.py).
+addopts = "--import-mode=importlib"

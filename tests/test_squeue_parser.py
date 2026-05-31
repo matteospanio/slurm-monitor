@@ -5,14 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from slurmhub.config import SSHConfig
-from slurmhub.squeue_parser import (
+from slurmhub.slurm.squeue import (
     SlurmJob,
     fetch_squeue_jobs,
     jobs_to_dict_list,
     parse_squeue_line,
     parse_squeue_output,
 )
-from slurmhub.ssh_wrapper import SSHClient
+from slurmhub.slurm.ssh import SSHClient
 
 
 @pytest.fixture

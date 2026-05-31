@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from slurmhub.config import SSHConfig
-from slurmhub.scontrol_parser import (
+from slurmhub.slurm.scontrol import (
     GpuInfo,
     JobDetails,
     build_job_details,
@@ -17,7 +17,7 @@ from slurmhub.scontrol_parser import (
     parse_tres_gpu,
     parse_tres_mem,
 )
-from slurmhub.ssh_wrapper import SSHClient, SSHConnectionError
+from slurmhub.slurm.ssh import SSHClient, SSHConnectionError
 
 SCONTROL_OUTPUT = """\
 JobId=4138646 JobName=bert-20k-preprocess_all

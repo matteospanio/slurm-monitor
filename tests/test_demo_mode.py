@@ -3,12 +3,12 @@
 from click.testing import CliRunner
 import pytest
 
-from slurmhub import demo_data
-from slurmhub.app import SlurmhubApp
+from slurmhub.slurm import demo_data
+from slurmhub.tui.app import SlurmhubApp
 from slurmhub.cli import main
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig
-from slurmhub.ssh_wrapper import DemoSSHClient
-from slurmhub.widgets.job_table import JobTable
+from slurmhub.slurm.ssh import DemoSSHClient
+from slurmhub.tui.widgets.job_table import JobTable
 
 
 class TestDemoSSHClient:
@@ -97,7 +97,7 @@ class TestDemoModeApp:
         assert isinstance(tab.ssh_client, DemoSSHClient)
 
     def test_app_uses_regular_ssh_client_without_demo(self):
-        from slurmhub.ssh_wrapper import SSHClient
+        from slurmhub.slurm.ssh import SSHClient
 
         app = SlurmhubApp(config=self._demo_config(), demo=False)
         tab = app._profile_tabs["demo"]
@@ -145,10 +145,12 @@ class TestDemoCliFlag:
             def run(self):
                 captured["ran"] = True
 
-        monkeypatch.setattr("slurmhub.app.SlurmhubApp", FakeApp)
+        monkeypatch.setattr("slurmhub.tui.app.SlurmhubApp", FakeApp)
 
         runner = CliRunner()
-        result = runner.invoke(main, ["--demo"])
+        # --tui pins the terminal-UI launch path; without it --demo defaults to
+        # the desktop GUI, which would start a real Qt event loop and block.
+        result = runner.invoke(main, ["--demo", "--tui"])
 
         assert result.exit_code == 0
         assert captured.get("ran") is True

@@ -17,7 +17,7 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     """
     from textual.app import App, ComposeResult
 
-    from slurmhub.widgets.first_run_wizard import (
+    from slurmhub.tui.widgets.first_run_wizard import (
         ConfirmScreen,
         FirstRunWizardScreen,
     )
@@ -93,11 +93,11 @@ def _launch(
     ``config_path`` is the file the Settings screen writes back to.
     """
     if use_tui:
-        from slurmhub.app import SlurmhubApp
+        from slurmhub.tui.app import SlurmhubApp
 
         SlurmhubApp(app_config, demo=demo, database=database).run()
     else:
-        from slurmhub.qt.app import run_gui
+        from slurmhub.gui.app import run_gui
 
         run_gui(app_config, demo=demo, database=database, config_path=config_path)
 
@@ -198,7 +198,7 @@ def main(
     if demo:
         from slurmhub.config import ProfileConfig as _ProfileConfig
         from slurmhub.config import SSHConfig
-        from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
+        from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME
 
         from slurmhub.db import open_demo_database
 
@@ -235,7 +235,7 @@ def main(
             if use_tui:
                 app_config = run_first_run_wizard(located_path)
             else:
-                from slurmhub.qt.dialogs.first_run_wizard import (
+                from slurmhub.gui.dialogs.first_run_wizard import (
                     run_first_run_wizard_qt,
                 )
 

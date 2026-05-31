@@ -10,7 +10,7 @@ from slurmhub.config import DatabaseConfig
 from slurmhub.db.engine import open_database
 from slurmhub.db.models import utcnow
 from slurmhub.db.repository import Repository
-from slurmhub.squeue_parser import SlurmJob
+from slurmhub.slurm.squeue import SlurmJob
 
 
 def test_concurrent_write_and_read_no_lock_errors(tmp_path):

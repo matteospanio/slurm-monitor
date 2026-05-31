@@ -1,0 +1,993 @@
+"""Main TUI application for slurmhub."""
+
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from textual.app import App, ComposeResult
+from textual.widgets import Footer, Header, TabbedContent, TabPane
+from textual.worker import Worker, WorkerState
+
+from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
+from slurmhub.db import Database, Repository
+from slurmhub.db.models import utcnow
+from slurmhub.core.job_aggregator import (
+    JobAggregator,
+    filter_jobs_by_state,
+    sort_jobs_by_time,
+)
+from slurmhub.core.log_path_resolver import LogPathResolver
+from slurmhub.core.queue_stats import (
+    ClusterQueueStats,
+    compute_queue_ranks,
+    fetch_cluster_queue_stats,
+    fetch_pending_details,
+)
+from slurmhub.slurm.sinfo import (
+    ClusterCapacity,
+    NodeStats,
+    PartitionStats,
+    fetch_sinfo,
+)
+from slurmhub.slurm.squeue import SlurmJob
+from slurmhub.slurm.ssh import (
+    DemoSSHClient,
+    SSHAuthenticationError,
+    SSHClient,
+    SSHConnectionError,
+    SSHTimeoutError,
+)
+from slurmhub.tui.widgets.cluster_dashboard import ClusterDashboardScreen
+from slurmhub.tui.widgets.cluster_status import ClusterStatus
+from slurmhub.tui.widgets.connection_status import ConnectionStatus
+from slurmhub.tui.widgets.filter_bar import FilterBar
+from slurmhub.tui.widgets.job_detail import JobDetail
+from slurmhub.tui.widgets.job_detail_screen import JobDetailScreen
+from slurmhub.tui.widgets.job_table import JobTable
+from slurmhub.tui.widgets.status_bar import StatusBar
+
+SINFO_REFRESH_SECONDS = 60.0
+PARTIAL_WARN_INTERVAL = 300.0  # 5 minutes between repeated partial-fetch warnings
+
+
+@dataclass
+class FetchResult:
+    """Result of a background job fetch."""
+
+    profile_name: str
+    jobs: list[SlurmJob] = field(default_factory=list)
+    queue_stats: Optional[ClusterQueueStats] = None
+    cluster_capacity: Optional[ClusterCapacity] = None
+    partitions: list[PartitionStats] = field(default_factory=list)
+    nodes: list[NodeStats] = field(default_factory=list)
+    sinfo_fetched: bool = False
+    error: Optional[Exception] = None
+    # Non-fatal sub-fetch failures keyed by sub-call name. Filled when
+    # the main squeue/sacct fetch succeeded but an auxiliary call
+    # (queue_stats, pending_details, sinfo) raised an exception.
+    partial_errors: dict[str, str] = field(default_factory=dict)
+
+
+class ProfileTab:
+    """Manages state for a single profile/cluster tab."""
+
+    def __init__(self, profile: ProfileConfig, demo: bool = False):
+        self.profile = profile
+        self.ssh_client: SSHClient = (
+            DemoSSHClient(profile.ssh) if demo else SSHClient(profile.ssh)
+        )
+        self.aggregator = JobAggregator(self.ssh_client, timeout=profile.ssh_timeout)
+        self.path_resolver = LogPathResolver(profile.log)
+        self.jobs: list[SlurmJob] = []
+        self.refresh_in_progress = False
+        self._sacct_cache: list[SlurmJob] = []
+        self._sacct_last_fetch: float = 0.0
+        self._auth_prompted: bool = False
+        self._auth_attempts: int = 0
+        self.queue_stats: Optional[ClusterQueueStats] = None
+        self._queue_stats_last_fetch: float = 0.0
+        self.cluster_capacity: Optional[ClusterCapacity] = None
+        self.partitions: list[PartitionStats] = []
+        self.nodes: list[NodeStats] = []
+        self._sinfo_last_fetch: float = 0.0
+        # Filter / sort state is per-tab so each profile remembers
+        # its own view independently when the user switches tabs.
+        self.state_filter: str = "ALL"
+        self.name_filter: str = ""
+        self.sort_mode: str = "id"  # id, time, state, name
+        # Throttle for non-fatal sub-fetch warnings. We only re-notify
+        # the user every PARTIAL_WARN_INTERVAL seconds even if the same
+        # auxiliary fetch keeps failing.
+        self._last_partial_warn_at: float = 0.0
+
+    def close(self) -> None:
+        """Clean up SSH connection."""
+        self.ssh_client.close()
+
+
+CSS_PATH = Path(__file__).parent / "app.tcss"
+
+
+class SlurmhubApp(App):
+    """Slurm job monitoring TUI application."""
+
+    CSS_PATH = "app.tcss"
+
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("r", "refresh", "Refresh"),
+        ("?", "help", "Help"),
+        ("j", "cursor_down", "Down"),
+        ("k", "cursor_up", "Up"),
+        ("g", "scroll_top", "Top"),
+        # Terminals send a literal "G" for Shift+G (no modifier in the key
+        # event) — bind both forms so it works in real terminals and the
+        # Textual test pilot, which synthesizes "shift+g" directly.
+        ("G,shift+g", "scroll_bottom", "Bottom"),
+        ("h", "previous_tab", "Prev tab"),
+        ("l", "next_tab", "Next tab"),
+        ("enter", "view_job", "Details"),  # fallback when table not focused
+        ("d", "view_dashboard", "Dashboard"),
+        # Real terminals send a literal "H" for Shift+H; bind both forms.
+        ("H,shift+h", "view_history", "History"),
+        # Real terminals send a literal "D" for Shift+D; bind both forms.
+        ("D,shift+d", "toggle_detail_panel", "Toggle detail panel"),
+        ("slash", "toggle_filter", "Filter"),
+        ("1", "filter_running", "Running"),
+        ("2", "filter_pending", "Pending"),
+        ("3", "filter_completed", "Completed"),
+        ("4", "filter_failed", "Failed"),
+        ("0", "filter_all", "All"),
+        ("s", "cycle_sort", "Sort"),
+        ("y", "yank_job_id", "Copy job ID"),
+        ("c", "cancel_job", "scancel"),
+    ]
+
+    def __init__(
+        self,
+        config: Optional[AppConfig] = None,
+        demo: bool = False,
+        database: Optional[Database] = None,
+    ):
+        super().__init__()
+        self.config = config or ConfigLoader.load()
+        self.demo = demo
+        # Persistence layer. ``database`` is None when disabled, in which case
+        # every history/favourite affordance no-ops with a notification.
+        self.database = database
+        self.repository = Repository() if database is not None else None
+        self._profile_tabs: dict[str, ProfileTab] = {}
+
+        for name, profile in self.config.profiles.items():
+            self._profile_tabs[name] = ProfileTab(profile, demo=demo)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+
+        if len(self._profile_tabs) == 1:
+            # Single profile: no tabs needed
+            name, tab = next(iter(self._profile_tabs.items()))
+            yield ConnectionStatus(id=f"status-{name}")
+            yield ClusterStatus(id=f"cluster-{name}")
+            yield JobTable(id=f"table-{name}")
+            yield JobDetail(id=f"detail-{name}")
+        else:
+            with TabbedContent():
+                for name, tab in self._profile_tabs.items():
+                    with TabPane(name, id=f"tab-{name}"):
+                        yield ConnectionStatus(id=f"status-{name}")
+                        yield ClusterStatus(id=f"cluster-{name}")
+                        yield JobTable(id=f"table-{name}")
+                        yield JobDetail(id=f"detail-{name}")
+
+        yield FilterBar(id="filter-bar")
+        yield StatusBar(id="status-bar")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.title = "slurmhub"
+
+        for name, tab in self._profile_tabs.items():
+            status = self.query_one(f"#status-{name}", ConnectionStatus)
+            status.host = tab.profile.ssh.host
+            status.profile_name = name
+
+        # Start periodic refresh for each profile
+        for name, tab in self._profile_tabs.items():
+            self.set_interval(
+                tab.profile.refresh_interval,
+                lambda n=name: self._refresh_profile(n),
+            )
+
+        # Measured-utilization capture runs on its own slower cadence so the
+        # extra scontrol/sstat/nvidia-smi calls never delay the fast refresh.
+        db_cfg = self.config.database
+        if (
+            self.database is not None
+            and db_cfg.capture_utilization
+            and db_cfg.utilization_interval > 0
+        ):
+            for name in self._profile_tabs:
+                self.set_interval(
+                    db_cfg.utilization_interval,
+                    lambda n=name: self._capture_utilization(n),
+                )
+
+        # Initial refresh for all profiles
+        for name in self._profile_tabs:
+            self._refresh_profile(name)
+
+    def _get_active_profile_name(self) -> str:
+        """Get the name of the currently active profile tab."""
+        if len(self._profile_tabs) == 1:
+            return next(iter(self._profile_tabs.keys()))
+
+        tabbed = self.query_one(TabbedContent)
+        active_id = tabbed.active
+        if active_id and active_id.startswith("tab-"):
+            return active_id[4:]
+        return next(iter(self._profile_tabs.keys()))
+
+    def _get_active_tab(self) -> ProfileTab:
+        """Get the ProfileTab for the currently active tab."""
+        return self._profile_tabs[self._get_active_profile_name()]
+
+    def _refresh_profile(self, profile_name: str) -> None:
+        """Trigger a job data refresh for a specific profile."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None or tab.refresh_in_progress:
+            return
+
+        tab.refresh_in_progress = True
+        try:
+            status = self.query_one(f"#status-{profile_name}", ConnectionStatus)
+            status.is_loading = True
+            status.error_message = None
+        except Exception:
+            pass
+
+        self.run_worker(
+            lambda t=tab, n=profile_name: self._fetch_jobs(t, n),
+            name=f"fetch-{profile_name}",
+            thread=True,
+        )
+
+    def _fetch_jobs(
+        self, tab: ProfileTab, profile_name: str
+    ) -> FetchResult:
+        """Fetch jobs in a background thread.
+
+        Returns:
+            FetchResult with jobs, queue stats, and optional error.
+        """
+        from slurmhub.slurm.squeue import fetch_squeue_jobs
+        from slurmhub.slurm.sacct import fetch_sacct_jobs
+
+        try:
+            # Always fetch squeue (active jobs)
+            active_jobs = fetch_squeue_jobs(
+                tab.ssh_client, timeout=tab.profile.ssh_timeout
+            )
+
+            # Only re-fetch sacct if cache is stale
+            now = time.time()
+            if now - tab._sacct_last_fetch > tab.profile.sacct_refresh_interval:
+                historical_jobs = fetch_sacct_jobs(
+                    tab.ssh_client, timeout=tab.profile.ssh_timeout
+                )
+                tab._sacct_cache = historical_jobs
+                tab._sacct_last_fetch = now
+            else:
+                historical_jobs = tab._sacct_cache
+
+            from slurmhub.core.job_aggregator import merge_jobs
+
+            merged = merge_jobs(active_jobs, historical_jobs)
+
+            partial_errors: dict[str, str] = {}
+
+            # Fetch cluster-wide queue stats (cached separately, ~30s)
+            queue_stats = None
+            try:
+                if now - tab._queue_stats_last_fetch > 30:
+                    queue_stats = fetch_cluster_queue_stats(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    tab._queue_stats_last_fetch = now
+                else:
+                    queue_stats = tab.queue_stats
+            except Exception as e:
+                partial_errors["queue_stats"] = str(e)
+
+            # Enrich PENDING jobs with reason, priority, QOS, rank
+            pending_ids = [j.job_id for j in merged if j.state == "PENDING"]
+            if pending_ids:
+                try:
+                    details = fetch_pending_details(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    ranks = compute_queue_ranks(
+                        tab.ssh_client, pending_ids, timeout=tab.profile.ssh_timeout
+                    )
+                    for job in merged:
+                        if job.state == "PENDING" and job.job_id in details:
+                            info = details[job.job_id]
+                            job.pending_reason = info.reason
+                            job.priority = info.priority
+                            job.qos = info.qos
+                            job.submit_time = info.submit_time
+                        if job.job_id in ranks:
+                            job.queue_rank = ranks[job.job_id]
+                except Exception as e:
+                    partial_errors["pending_details"] = str(e)
+
+            # Fetch sinfo (cluster nodes + partitions) at a slower cadence.
+            cluster_capacity: Optional[ClusterCapacity] = None
+            partitions: list[PartitionStats] = []
+            nodes_data: list[NodeStats] = []
+            sinfo_fetched = False
+            try:
+                if now - tab._sinfo_last_fetch > SINFO_REFRESH_SECONDS:
+                    cluster_capacity, partitions, nodes_data = fetch_sinfo(
+                        tab.ssh_client, timeout=tab.profile.ssh_timeout
+                    )
+                    sinfo_fetched = True
+            except Exception as e:
+                partial_errors["sinfo"] = str(e)
+
+            # Persist this cycle's jobs + a usage snapshot for the active ones.
+            # Runs on the worker thread (off the UI thread); any DB failure is
+            # isolated as a partial error and never breaks live monitoring.
+            if self.database is not None and self.repository is not None:
+                try:
+                    with self.database.session() as session:
+                        self.repository.capture_refresh(
+                            session, profile_name, merged, utcnow()
+                        )
+                except Exception as e:
+                    partial_errors["db"] = str(e)
+
+            return FetchResult(
+                profile_name=profile_name,
+                jobs=merged,
+                queue_stats=queue_stats,
+                cluster_capacity=cluster_capacity,
+                partitions=partitions,
+                nodes=nodes_data,
+                sinfo_fetched=sinfo_fetched,
+                partial_errors=partial_errors,
+            )
+
+        except (SSHConnectionError, SSHTimeoutError) as e:
+            return FetchResult(profile_name=profile_name, error=e)
+
+    def _capture_utilization(self, profile_name: str) -> None:
+        """Spawn a slow-cadence worker to record measured utilization."""
+        if self.database is None or self.repository is None:
+            return
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None or not tab.jobs:
+            return
+        self.run_worker(
+            lambda t=tab, n=profile_name: self._capture_utilization_work(t, n),
+            name=f"util-{profile_name}",
+            thread=True,
+        )
+
+    def _capture_utilization_work(
+        self, tab: ProfileTab, profile_name: str
+    ) -> None:
+        """Fetch per-job scontrol/sstat/GPU stats and store util snapshots.
+
+        Best-effort: any failure is swallowed so live monitoring is never
+        disrupted. Runs entirely on a worker thread.
+        """
+        if self.database is None or self.repository is None:
+            return
+        from slurmhub.slurm.scontrol import fetch_job_details
+
+        running = [j for j in tab.jobs if j.state == "RUNNING"]
+        if not running:
+            return
+        captured = utcnow()
+        try:
+            with self.database.session() as session:
+                for job in running:
+                    try:
+                        details = fetch_job_details(
+                            tab.ssh_client, job.job_id, tab.profile.ssh_timeout
+                        )
+                    except Exception:
+                        details = None
+                    pk = self.repository.upsert_job(
+                        session, profile_name, job, details
+                    )
+                    self.repository.record_snapshot(
+                        session, pk, job, captured, details
+                    )
+                session.commit()
+        except Exception:
+            pass
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        worker_name = event.worker.name or ""
+
+        if worker_name.startswith("scancel-"):
+            if event.state == WorkerState.SUCCESS:
+                profile_name, job_id, status, err = event.worker.result
+                if status == "ok":
+                    self.notify(f"Cancelled job {job_id}", timeout=3)
+                    self._refresh_profile(profile_name)
+                else:
+                    self.notify(
+                        f"scancel {job_id} failed: {err}",
+                        severity="error",
+                        timeout=5,
+                    )
+            elif event.state == WorkerState.ERROR:
+                err = event.worker.error
+                self.notify(
+                    f"scancel failed: {err}", severity="error", timeout=5
+                )
+            return
+
+        if not worker_name.startswith("fetch-"):
+            return
+
+        profile_name = worker_name[6:]  # strip "fetch-"
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        try:
+            status = self.query_one(f"#status-{profile_name}", ConnectionStatus)
+        except Exception:
+            return
+
+        if event.state == WorkerState.SUCCESS:
+            result: FetchResult = event.worker.result
+            status.is_loading = False
+
+            if result.error is not None:
+                error_msg = str(result.error)
+                status.error_message = error_msg
+
+                if (
+                    isinstance(result.error, SSHAuthenticationError)
+                    and not tab._auth_prompted
+                    and tab._auth_attempts < 3
+                ):
+                    tab._auth_prompted = True
+                    from slurmhub.tui.widgets.password_prompt import (
+                        PasswordPromptScreen,
+                    )
+
+                    self.push_screen(
+                        PasswordPromptScreen(
+                            tab.profile.ssh.host,
+                            tab.profile.ssh.username,
+                        ),
+                        callback=lambda r, n=profile_name: (
+                            self._handle_password_result(n, r)
+                        ),
+                    )
+                else:
+                    self.notify(
+                        f"Error: {error_msg}", severity="error", timeout=5
+                    )
+            else:
+                tab.jobs = result.jobs
+                tab.queue_stats = result.queue_stats
+                if result.sinfo_fetched:
+                    tab.cluster_capacity = result.cluster_capacity
+                    tab.partitions = result.partitions
+                    tab.nodes = result.nodes
+                    tab._sinfo_last_fetch = time.time()
+                status.last_updated = datetime.now().strftime("%H:%M:%S")
+                status.error_message = None
+                tab._auth_attempts = 0
+
+                # Surface non-fatal sub-fetch failures (sinfo / queue
+                # stats / pending details). Throttled to once every
+                # PARTIAL_WARN_INTERVAL seconds per profile.
+                if result.partial_errors:
+                    failed = ", ".join(sorted(result.partial_errors.keys()))
+                    status.warning_message = f"partial: {failed}"
+                    now = time.time()
+                    if now - tab._last_partial_warn_at > PARTIAL_WARN_INTERVAL:
+                        tab._last_partial_warn_at = now
+                        self.notify(
+                            f"[{profile_name}] partial fetch failure: {failed}",
+                            severity="warning",
+                            timeout=5,
+                        )
+                else:
+                    status.warning_message = None
+
+                # Only update UI if this is the active tab
+                if profile_name == self._get_active_profile_name():
+                    self._update_display(profile_name)
+
+            tab.refresh_in_progress = False
+
+        elif event.state == WorkerState.ERROR:
+            error = event.worker.error
+            status.is_loading = False
+            status.error_message = str(error)
+            self.notify(f"Error: {error}", severity="error", timeout=5)
+            tab.refresh_in_progress = False
+
+        elif event.state == WorkerState.CANCELLED:
+            status.is_loading = False
+            tab.refresh_in_progress = False
+
+    def _handle_password_result(
+        self, profile_name: str, password: Optional[str]
+    ) -> None:
+        """Handle the result from the password prompt screen."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        tab._auth_prompted = False
+
+        if password is None:
+            self.notify("Authentication cancelled", severity="warning", timeout=3)
+            return
+
+        tab.ssh_client.set_credentials(password=password, passphrase=password)
+        tab._auth_attempts += 1
+        self._refresh_profile(profile_name)
+
+    def _get_filtered_jobs(self, tab: ProfileTab) -> list[SlurmJob]:
+        """Apply the tab's filters and sorting to its job list."""
+        filtered = tab.jobs
+
+        if tab.state_filter != "ALL":
+            filtered = filter_jobs_by_state(filtered, [tab.state_filter])
+
+        if tab.name_filter:
+            query = tab.name_filter.lower()
+            filtered = [
+                j for j in filtered
+                if query in j.name.lower() or query in j.job_id
+            ]
+
+        if tab.sort_mode == "time":
+            filtered = sort_jobs_by_time(filtered)
+        elif tab.sort_mode == "name":
+            filtered = sorted(filtered, key=lambda j: j.name.lower())
+        elif tab.sort_mode == "state":
+            filtered = sorted(filtered, key=lambda j: j.state)
+        # "id" is the default (already sorted by merge_jobs)
+
+        return filtered
+
+    def _update_display(self, profile_name: str) -> None:
+        """Update the UI for a specific profile."""
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+
+        try:
+            table = self.query_one(f"#table-{profile_name}", JobTable)
+            table.update_jobs(filtered)
+        except Exception:
+            table = None
+
+        # Sync the detail panel with whatever row the table cursor lands
+        # on. DataTable doesn't emit a CursorMoved event for the initial
+        # row-0 placement, so without this the panel would stay on "No
+        # job selected" until the user pressed j/k.
+        try:
+            detail = self.query_one(f"#detail-{profile_name}", JobDetail)
+            if (
+                table is not None
+                and filtered
+                and table.cursor_row is not None
+                and 0 <= table.cursor_row < len(filtered)
+            ):
+                detail.set_job(filtered[table.cursor_row], has_jobs=True)
+            else:
+                detail.set_job(None, has_jobs=bool(filtered))
+        except Exception:
+            pass
+
+        try:
+            cluster = self.query_one(f"#cluster-{profile_name}", ClusterStatus)
+            cluster.update_stats(tab.queue_stats)
+            cluster.update_capacity(tab.cluster_capacity)
+        except Exception:
+            pass
+
+        try:
+            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar.update_stats(
+                tab.jobs,
+                filter_text=tab.name_filter,
+                state_filter=tab.state_filter,
+                sort_mode=tab.sort_mode,
+                visible_count=len(filtered),
+            )
+        except Exception:
+            pass
+
+    def on_data_table_row_selected(self, event) -> None:
+        """Handle Enter key on a table row — open job detail screen."""
+        self.action_view_job()
+
+    def on_data_table_cursor_moved(self, event) -> None:
+        """Update job detail panel when cursor moves."""
+        active_name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(active_name)
+        if tab is None:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+
+        try:
+            table = self.query_one(f"#table-{active_name}", JobTable)
+            detail = self.query_one(f"#detail-{active_name}", JobDetail)
+        except Exception:
+            return
+
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(filtered):
+            detail.set_job(filtered[table.cursor_row], has_jobs=True)
+        else:
+            detail.set_job(None, has_jobs=bool(filtered))
+
+    def on_tabbed_content_tab_activated(self, event) -> None:
+        """Refresh display and sync filter UI when switching tabs."""
+        active_name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(active_name)
+        if tab is None:
+            return
+
+        # Sync the filter input to the newly-active tab's name_filter so
+        # the user sees the right search text (if any) for this profile.
+        try:
+            filter_bar = self.query_one("#filter-bar", FilterBar)
+            filter_bar.set_value(tab.name_filter)
+            # Only show the filter bar if this tab has an active search.
+            filter_bar.display = bool(tab.name_filter)
+        except Exception:
+            pass
+
+        self._update_display(active_name)
+
+    # ── Actions ──────────────────────────────────────────────────────
+
+    def action_refresh(self) -> None:
+        """Manually refresh the active profile."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab:
+            tab._sacct_last_fetch = 0.0  # force sacct re-fetch
+        self.notify("Refreshing...", timeout=2)
+        self._refresh_profile(name)
+
+    def action_help(self) -> None:
+        """Open the modal keybinding cheatsheet for the main view."""
+        from slurmhub.tui.widgets.help_screen import HelpScreen
+
+        self.push_screen(HelpScreen(context="main"))
+
+    def action_cursor_down(self) -> None:
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_cursor_down()
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_cursor_up()
+        except Exception:
+            pass
+
+    def action_scroll_top(self) -> None:
+        """Move cursor to the first row (vim `g`)."""
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_scroll_top()
+        except Exception:
+            pass
+
+    def action_scroll_bottom(self) -> None:
+        """Move cursor to the last row (vim `G`)."""
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).action_scroll_bottom()
+        except Exception:
+            pass
+
+    def action_next_tab(self) -> None:
+        """Switch to the next profile tab (vim `l`)."""
+        if len(self._profile_tabs) <= 1:
+            return
+        try:
+            tabbed = self.query_one(TabbedContent)
+        except Exception:
+            return
+        names = list(self._profile_tabs.keys())
+        current = self._get_active_profile_name()
+        idx = names.index(current) if current in names else 0
+        tabbed.active = f"tab-{names[(idx + 1) % len(names)]}"
+
+    def action_previous_tab(self) -> None:
+        """Switch to the previous profile tab (vim `h`)."""
+        if len(self._profile_tabs) <= 1:
+            return
+        try:
+            tabbed = self.query_one(TabbedContent)
+        except Exception:
+            return
+        names = list(self._profile_tabs.keys())
+        current = self._get_active_profile_name()
+        idx = names.index(current) if current in names else 0
+        tabbed.active = f"tab-{names[(idx - 1) % len(names)]}"
+
+    def action_toggle_detail_panel(self) -> None:
+        """Hide / show the bottom JobDetail panel for the active tab."""
+        name = self._get_active_profile_name()
+        try:
+            detail = self.query_one(f"#detail-{name}", JobDetail)
+        except Exception:
+            return
+        detail.display = not detail.display
+
+    def action_view_dashboard(self) -> None:
+        """Open the cluster dashboard for the active profile."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        self.push_screen(
+            ClusterDashboardScreen(
+                profile_name=name,
+                ssh_client=tab.ssh_client,
+                ssh_timeout=tab.profile.ssh_timeout,
+                initial_capacity=tab.cluster_capacity,
+                initial_partitions=tab.partitions,
+                initial_nodes=tab.nodes,
+            )
+        )
+
+    def action_view_history(self) -> None:
+        """Open the job-history & analytics screen for the active profile."""
+        if self.database is None or self.repository is None:
+            self.notify(
+                "Job history is disabled — enable [database] in your config",
+                severity="warning",
+                timeout=4,
+            )
+            return
+        from slurmhub.tui.widgets.history_screen import HistoryScreen
+
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        self.push_screen(
+            HistoryScreen(
+                database=self.database,
+                repository=self.repository,
+                profile_name=name,
+                profile_names=list(self._profile_tabs.keys()),
+                ssh_client=tab.ssh_client if tab else None,
+                ssh_timeout=tab.profile.ssh_timeout if tab else 10,
+            )
+        )
+
+    def action_view_job(self) -> None:
+        """Open the detail screen for the selected job."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+
+        if table.cursor_row is None or table.cursor_row < 0:
+            self.notify("No job selected", severity="warning", timeout=3)
+            return
+
+        if not filtered:
+            self.notify("No jobs available", severity="warning", timeout=3)
+            return
+
+        try:
+            selected_job = filtered[table.cursor_row]
+        except IndexError:
+            self.notify("Invalid job selection", severity="error", timeout=3)
+            return
+
+        self.push_screen(
+            JobDetailScreen(
+                selected_job,
+                tab.ssh_client,
+                tab.profile.ssh_timeout,
+                repository=self.repository,
+                database=self.database,
+                profile_name=name,
+            )
+        )
+
+    # ── Filter actions ───────────────────────────────────────────────
+
+    def action_toggle_filter(self) -> None:
+        """Toggle the search/filter bar for the active tab."""
+        filter_bar = self.query_one("#filter-bar", FilterBar)
+        tab = self._get_active_tab()
+        if filter_bar.display:
+            filter_bar.hide()
+        else:
+            filter_bar.show(initial_value=tab.name_filter)
+
+    def on_filter_bar_filter_changed(self, event: FilterBar.FilterChanged) -> None:
+        tab = self._get_active_tab()
+        tab.name_filter = event.value
+        self._update_display(self._get_active_profile_name())
+
+    def on_filter_bar_filter_closed(self, event: FilterBar.FilterClosed) -> None:
+        # Return focus to the table
+        name = self._get_active_profile_name()
+        try:
+            self.query_one(f"#table-{name}", JobTable).focus()
+        except Exception:
+            pass
+
+    def _set_state_filter(self, state: str) -> None:
+        tab = self._get_active_tab()
+        tab.state_filter = state
+        self._update_display(self._get_active_profile_name())
+
+    def action_filter_running(self) -> None:
+        tab = self._get_active_tab()
+        self._set_state_filter("RUNNING" if tab.state_filter != "RUNNING" else "ALL")
+
+    def action_filter_pending(self) -> None:
+        tab = self._get_active_tab()
+        self._set_state_filter("PENDING" if tab.state_filter != "PENDING" else "ALL")
+
+    def action_filter_completed(self) -> None:
+        tab = self._get_active_tab()
+        self._set_state_filter(
+            "COMPLETED" if tab.state_filter != "COMPLETED" else "ALL"
+        )
+
+    def action_filter_failed(self) -> None:
+        tab = self._get_active_tab()
+        self._set_state_filter("FAILED" if tab.state_filter != "FAILED" else "ALL")
+
+    def action_filter_all(self) -> None:
+        self._set_state_filter("ALL")
+
+    def action_cancel_job(self) -> None:
+        """Cancel (scancel) the selected job after a confirmation modal."""
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+        if (
+            table.cursor_row is None
+            or table.cursor_row < 0
+            or table.cursor_row >= len(filtered)
+        ):
+            self.notify("No job selected", severity="warning", timeout=2)
+            return
+
+        # Capture the selected SlurmJob *now* — the cursor may move
+        # before the user confirms the modal, so we close over the
+        # object rather than re-reading the cursor index.
+        target = filtered[table.cursor_row]
+        if target.state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}:
+            self.notify(
+                f"Job {target.job_id} is already {target.state}",
+                severity="warning",
+                timeout=3,
+            )
+            return
+
+        from slurmhub.tui.widgets.confirm_screen import ConfirmScreen
+
+        msg = f"Cancel job {target.job_id} ({target.name})?"
+        self.push_screen(
+            ConfirmScreen(msg, dangerous=True, confirm_label="scancel"),
+            callback=lambda yes, j=target, p=name: self._do_scancel(p, j, yes),
+        )
+
+    def _do_scancel(
+        self, profile_name: str, job: SlurmJob, confirmed: Optional[bool]
+    ) -> None:
+        if not confirmed:
+            return
+
+        import shlex
+
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None:
+            return
+
+        # job_id should be numeric, but quote it defensively to match
+        # the established pattern for shell args.
+        quoted = shlex.quote(job.job_id)
+
+        def _run() -> tuple[str, str, str, str]:
+            """Return (profile_name, job_id, status, error).
+
+            status is "ok" or "err". This shape is unpacked by
+            on_worker_state_changed via the scancel- worker-name prefix.
+            """
+            try:
+                tab.ssh_client.execute(
+                    f"scancel {quoted}", timeout=tab.profile.ssh_timeout
+                )
+                return profile_name, job.job_id, "ok", ""
+            except Exception as exc:
+                return profile_name, job.job_id, "err", str(exc)
+
+        self.run_worker(
+            _run, thread=True, name=f"scancel-{profile_name}-{job.job_id}"
+        )
+
+    def action_yank_job_id(self) -> None:
+        """Copy the selected job's ID to the system clipboard via OSC 52."""
+        from slurmhub.tui.widgets._clipboard import copy_osc52
+
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        if tab is None:
+            return
+        try:
+            table = self.query_one(f"#table-{name}", JobTable)
+        except Exception:
+            return
+
+        filtered = self._get_filtered_jobs(tab)
+        if (
+            table.cursor_row is None
+            or table.cursor_row < 0
+            or table.cursor_row >= len(filtered)
+        ):
+            self.notify("No job selected", severity="warning", timeout=2)
+            return
+
+        job_id = filtered[table.cursor_row].job_id
+        if copy_osc52(job_id):
+            self.notify(f"Copied {job_id}", timeout=2)
+        else:
+            self.notify(
+                f"Clipboard unavailable — job ID: {job_id}",
+                severity="warning",
+                timeout=3,
+            )
+
+    def action_cycle_sort(self) -> None:
+        modes = ["id", "time", "name", "state"]
+        tab = self._get_active_tab()
+        current = modes.index(tab.sort_mode) if tab.sort_mode in modes else 0
+        tab.sort_mode = modes[(current + 1) % len(modes)]
+        self.notify(f"Sort: {tab.sort_mode}", timeout=2)
+        self._update_display(self._get_active_profile_name())
+
+    def on_unmount(self) -> None:
+        """Clean up SSH connections and the database handle on exit."""
+        for tab in self._profile_tabs.values():
+            tab.close()
+        if self.database is not None:
+            self.database.close()

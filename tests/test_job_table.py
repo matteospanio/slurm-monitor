@@ -4,8 +4,8 @@ import pytest
 
 from textual.app import App, ComposeResult
 
-from slurmhub.squeue_parser import SlurmJob
-from slurmhub.widgets.job_table import JobTable, _truncate_name, _truncate_path
+from slurmhub.slurm.squeue import SlurmJob
+from slurmhub.tui.widgets.job_table import JobTable, _truncate_name, _truncate_path
 
 
 def _make_job(job_id: str, name: str = "test", state: str = "RUNNING") -> SlurmJob:

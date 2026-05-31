@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slurmhub.app import FetchResult, ProfileTab, SlurmhubApp
+from slurmhub.tui.app import FetchResult, ProfileTab, SlurmhubApp
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig, LogConfig
-from slurmhub.squeue_parser import SlurmJob
-from slurmhub.ssh_wrapper import SSHConnectionError, SSHTimeoutError
-from slurmhub.widgets.job_detail import JobDetail
-from slurmhub.widgets.job_table import JobTable
+from slurmhub.slurm.squeue import SlurmJob
+from slurmhub.slurm.ssh import SSHConnectionError, SSHTimeoutError
+from slurmhub.tui.widgets.job_detail import JobDetail
+from slurmhub.tui.widgets.job_table import JobTable
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs",
+            "slurmhub.slurm.squeue.fetch_squeue_jobs",
             side_effect=SSHConnectionError("Connection refused"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -46,7 +46,7 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs",
+            "slurmhub.slurm.squeue.fetch_squeue_jobs",
             side_effect=SSHTimeoutError("Timed out"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -59,9 +59,9 @@ class TestFetchJobsErrorHandling:
         tab = app._profile_tabs["test"]
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.slurm.squeue.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.slurm.sacct.fetch_sacct_jobs", return_value=[]
         ):
             result = app._fetch_jobs(tab, "test")
 
@@ -75,9 +75,9 @@ class TestFetchJobsErrorHandling:
         tab._sacct_last_fetch = 0.0  # force sacct re-fetch
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.slurm.squeue.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurmhub.sacct_parser.fetch_sacct_jobs",
+            "slurmhub.slurm.sacct.fetch_sacct_jobs",
             side_effect=SSHConnectionError("Connection lost"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -279,7 +279,7 @@ class TestScancelAction:
 
     @pytest.mark.asyncio
     async def test_c_opens_confirm_screen(self):
-        from slurmhub.widgets.confirm_screen import ConfirmScreen
+        from slurmhub.tui.widgets.confirm_screen import ConfirmScreen
 
         app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
@@ -343,11 +343,11 @@ class TestPartialFetchErrors:
         tab._sinfo_last_fetch = 0.0  # force a sinfo fetch attempt
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.slurm.squeue.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.slurm.sacct.fetch_sacct_jobs", return_value=[]
         ), patch(
-            "slurmhub.app.fetch_sinfo",
+            "slurmhub.tui.app.fetch_sinfo",
             side_effect=RuntimeError("sinfo unavailable"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -361,11 +361,11 @@ class TestPartialFetchErrors:
         tab._queue_stats_last_fetch = 0.0
 
         with patch(
-            "slurmhub.squeue_parser.fetch_squeue_jobs", return_value=[]
+            "slurmhub.slurm.squeue.fetch_squeue_jobs", return_value=[]
         ), patch(
-            "slurmhub.sacct_parser.fetch_sacct_jobs", return_value=[]
+            "slurmhub.slurm.sacct.fetch_sacct_jobs", return_value=[]
         ), patch(
-            "slurmhub.app.fetch_cluster_queue_stats",
+            "slurmhub.tui.app.fetch_cluster_queue_stats",
             side_effect=RuntimeError("network blip"),
         ):
             result = app._fetch_jobs(tab, "test")
@@ -381,7 +381,7 @@ class TestFilterBarUX:
     async def test_slash_then_escape_clears_filter(self):
         app = SlurmhubApp(config=_single_profile_config())
         async with app.run_test() as pilot:
-            from slurmhub.widgets.filter_bar import FilterBar
+            from slurmhub.tui.widgets.filter_bar import FilterBar
             from textual.widgets import Input
 
             await pilot.press("slash")
@@ -417,7 +417,7 @@ class TestFilterBarUX:
             app._update_display("clusterA")
             await pilot.pause()
 
-            from slurmhub.widgets.status_bar import StatusBar
+            from slurmhub.tui.widgets.status_bar import StatusBar
             sb = app.query_one("#status-bar", StatusBar)
             rendered = str(sb.render())
             assert "2 of 3 shown" in rendered

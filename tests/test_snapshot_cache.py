@@ -2,10 +2,10 @@
 
 import json
 
-from slurmhub.queue_stats import ClusterQueueStats
-from slurmhub.sinfo_parser import ClusterCapacity, NodeStats, PartitionStats
-from slurmhub.snapshot_cache import CachedSnapshot, SnapshotCache
-from slurmhub.squeue_parser import SlurmJob
+from slurmhub.core.queue_stats import ClusterQueueStats
+from slurmhub.slurm.sinfo import ClusterCapacity, NodeStats, PartitionStats
+from slurmhub.core.snapshot_cache import CachedSnapshot, SnapshotCache
+from slurmhub.slurm.squeue import SlurmJob
 
 
 def test_round_trip(tmp_path):

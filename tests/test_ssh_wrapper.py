@@ -8,7 +8,7 @@ import paramiko
 import pytest
 
 from slurmhub.config import SSHConfig
-from slurmhub.ssh_wrapper import (
+from slurmhub.slurm.ssh import (
     SSHAuthenticationError,
     SSHClient,
     SSHConnectionError,

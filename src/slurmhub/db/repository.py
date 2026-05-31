@@ -16,9 +16,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from slurmhub.db.models import Favourite, Job, UsageSnapshot, utcnow
-from slurmhub.job_aggregator import time_to_seconds
-from slurmhub.scontrol_parser import JobDetails, parse_mem_bytes
-from slurmhub.squeue_parser import SlurmJob, mem_str_to_mb
+from slurmhub.slurm.scontrol import JobDetails, parse_mem_bytes
+from slurmhub.slurm.squeue import SlurmJob, mem_str_to_mb
+from slurmhub.slurm.util import time_to_seconds
 
 # States that no longer consume cluster resources — recorded in history but
 # never snapshotted again (so the time-series table stays bounded).

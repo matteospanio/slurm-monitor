@@ -10,7 +10,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Input, Static
 
 from slurmhub.config import ProfileConfig
-from slurmhub.widgets.first_run_wizard import (
+from slurmhub.tui.widgets.first_run_wizard import (
     ConfirmScreen,
     FirstRunWizardScreen,
     _default_key_path,
@@ -85,12 +85,12 @@ class TestBuildProfileFromFields:
 
 class TestDefaultKeyPath:
     def test_falls_back_to_rsa(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("slurmhub.widgets.first_run_wizard.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("slurmhub.tui.widgets.first_run_wizard.Path.home", lambda: tmp_path)
         # No keys exist — fall back to id_rsa
         assert _default_key_path().endswith("id_rsa")
 
     def test_prefers_ed25519_when_present(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("slurmhub.widgets.first_run_wizard.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("slurmhub.tui.widgets.first_run_wizard.Path.home", lambda: tmp_path)
         (tmp_path / ".ssh").mkdir()
         (tmp_path / ".ssh" / "id_ed25519").write_text("k")
         assert _default_key_path().endswith("id_ed25519")

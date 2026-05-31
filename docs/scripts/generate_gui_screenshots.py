@@ -18,10 +18,10 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from slurmhub.config import AppConfig, ProfileConfig, SSHConfig  # noqa: E402
 from slurmhub.db import open_demo_database  # noqa: E402
-from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME  # noqa: E402
-from slurmhub.qt.controller import AppController  # noqa: E402
-from slurmhub.qt.main_window import MainWindow  # noqa: E402
-from slurmhub.qt.theme import apply_theme  # noqa: E402
+from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME  # noqa: E402
+from slurmhub.gui.controller import AppController  # noqa: E402
+from slurmhub.gui.main_window import MainWindow  # noqa: E402
+from slurmhub.gui.theme import apply_theme  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "_static" / "screenshots"
 

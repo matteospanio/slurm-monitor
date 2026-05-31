@@ -3,7 +3,7 @@
 import pytest
 from textual.app import App, ComposeResult
 
-from slurmhub.widgets.confirm_screen import ConfirmScreen
+from slurmhub.tui.widgets.confirm_screen import ConfirmScreen
 
 
 class _Host(App):
