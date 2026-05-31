@@ -33,7 +33,9 @@ built with [Textual](https://textual.textualize.io/).
   filter, search, and sort state is remembered per tab.
 - **Persistent job history & analytics** (`H`) — a local SQLite database records every
   run, its resource usage over time, and your favourites; browse, filter, and see
-  GPU / CPU / memory-hour aggregates. On by default; `--demo` ships a seeded history.
+  GPU / CPU / memory-hour aggregates. In the GUI, you can open Job Detail directly
+  from History rows, and history capture remains scoped to your jobs even when Queue
+  is viewing the full cluster. On by default; `--demo` ships a seeded history.
 - **Favourites & notes** — star important runs (`f`) and annotate them (`n`); starred
   runs are exempt from history retention.
 - **Vim-style navigation** throughout.
@@ -57,13 +59,20 @@ environment so its dependencies don't pollute your system Python:
 # uv (https://docs.astral.sh/uv/)
 uvx slurmhub                         # one-shot run
 uv tool install slurmhub             # persistent install on $PATH
+uvx 'slurmhub[tui]' --tui            # one-shot TUI run
+uv tool install 'slurmhub[tui]'      # persistent install with TUI deps
 
 # pipx (https://pipx.pypa.io/)
 pipx install slurmhub
+pipx install 'slurmhub[tui]'         # include terminal UI deps
 
 # plain pip — works, but consider a venv first
 pip install --user slurmhub
+pip install --user 'slurmhub[tui]'   # include terminal UI deps
 ```
+
+`slurmhub --tui` requires the optional `tui` dependencies
+(`textual` + `rich`).
 
 Then:
 
@@ -88,6 +97,8 @@ git clone https://github.com/matteospanio/slurmhub.git
 cd slurmhub
 uv sync
 uv run slurmhub
+# optional TUI deps for --tui and the full test suite:
+uv sync --group tui
 ```
 
 ## Quick start
@@ -127,7 +138,7 @@ uv run sphinx-build -b html docs docs/_build/html
 ## Development
 
 ```bash
-uv sync --group dev
+uv sync --group dev --group tui
 uv run pytest                       # run the test suite (417 tests)
 pre-commit install                  # enable code-quality hooks
 uv run python docs/scripts/generate_screenshots.py  # regenerate docs SVGs

@@ -6,7 +6,8 @@ boils down to a single command from your tool of choice.
 ```{tip}
 Prefer a **double-click desktop app** with no Python install? Grab a standalone
 binary from the [Download page](download.md) instead. A PyPI install gives you both
-the desktop GUI (default) and the terminal UI (`slurmhub --tui`).
+the desktop GUI (default); install `slurmhub[tui]` if you also want the
+terminal UI (`slurmhub --tui`).
 ```
 
 ## Requirements
@@ -36,6 +37,7 @@ install anything permanently.
 ```bash
 uvx slurmhub --demo            # one-shot run
 uvx slurmhub --help
+uvx 'slurmhub[tui]' --tui      # one-shot run with TUI deps
 ```
 
 To make `slurmhub` available on your `$PATH` permanently:
@@ -43,6 +45,9 @@ To make `slurmhub` available on your `$PATH` permanently:
 ```bash
 uv tool install slurmhub
 slurmhub --help
+
+# include terminal UI deps
+uv tool install 'slurmhub[tui]'
 ```
 
 ```{tip}
@@ -61,6 +66,9 @@ environments and exposes the entry point on your `$PATH`:
 ```bash
 pipx install slurmhub
 slurmhub --help
+
+# include terminal UI deps
+pipx install 'slurmhub[tui]'
 ```
 
 To upgrade later:
@@ -80,9 +88,11 @@ environment as the rest of your Python work and create conflicts.
 ```bash
 # Inside a virtualenv:
 pip install slurmhub
+pip install 'slurmhub[tui]'   # include terminal UI deps
 
 # Or per-user (skips sudo, still global-ish):
 pip install --user slurmhub
+pip install --user 'slurmhub[tui]'
 ```
 
 ```{warning}
@@ -101,16 +111,20 @@ git clone https://github.com/matteospanio/slurmhub.git
 cd slurmhub
 uv sync                  # creates .venv and resolves uv.lock
 uv run slurmhub          # run from the checkout
+
+# optional terminal UI deps (required for --tui):
+uv sync --group tui
 ```
 
 `uv sync` installs:
 
-- [textual](https://textual.textualize.io/) — TUI framework
-- [rich](https://rich.readthedocs.io/) — terminal rendering
+- [PySide6](https://doc.qt.io/qtforpython-6/) — desktop GUI framework
+- [qtawesome](https://github.com/spyder-ide/qtawesome) — GUI icon set
 - [paramiko](https://www.paramiko.org/) — SSH client
 - [click](https://click.palletsprojects.com/) — CLI parsing
 
-Add `--group dev` for the test suite, `--group docs` to build this site.
+Add `--group tui` for terminal UI support, `--group dev` for the test suite,
+and `--group docs` to build this site.
 :::
 
 ::::

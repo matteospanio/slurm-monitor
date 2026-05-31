@@ -254,9 +254,7 @@ class SlurmhubApp(App):
             thread=True,
         )
 
-    def _fetch_jobs(
-        self, tab: ProfileTab, profile_name: str
-    ) -> FetchResult:
+    def _fetch_jobs(self, tab: ProfileTab, profile_name: str) -> FetchResult:
         """Fetch jobs in a background thread.
 
         Returns:
@@ -376,9 +374,7 @@ class SlurmhubApp(App):
             thread=True,
         )
 
-    def _capture_utilization_work(
-        self, tab: ProfileTab, profile_name: str
-    ) -> None:
+    def _capture_utilization_work(self, tab: ProfileTab, profile_name: str) -> None:
         """Fetch per-job scontrol/sstat/GPU stats and store util snapshots.
 
         Best-effort: any failure is swallowed so live monitoring is never
@@ -401,12 +397,8 @@ class SlurmhubApp(App):
                         )
                     except Exception:
                         details = None
-                    pk = self.repository.upsert_job(
-                        session, profile_name, job, details
-                    )
-                    self.repository.record_snapshot(
-                        session, pk, job, captured, details
-                    )
+                    pk = self.repository.upsert_job(session, profile_name, job, details)
+                    self.repository.record_snapshot(session, pk, job, captured, details)
                 session.commit()
         except Exception:
             pass
@@ -428,9 +420,7 @@ class SlurmhubApp(App):
                     )
             elif event.state == WorkerState.ERROR:
                 err = event.worker.error
-                self.notify(
-                    f"scancel failed: {err}", severity="error", timeout=5
-                )
+                self.notify(f"scancel failed: {err}", severity="error", timeout=5)
             return
 
         if not worker_name.startswith("fetch-"):
@@ -474,9 +464,7 @@ class SlurmhubApp(App):
                         ),
                     )
                 else:
-                    self.notify(
-                        f"Error: {error_msg}", severity="error", timeout=5
-                    )
+                    self.notify(f"Error: {error_msg}", severity="error", timeout=5)
             else:
                 tab.jobs = result.jobs
                 tab.queue_stats = result.queue_stats
@@ -551,8 +539,7 @@ class SlurmhubApp(App):
         if tab.name_filter:
             query = tab.name_filter.lower()
             filtered = [
-                j for j in filtered
-                if query in j.name.lower() or query in j.job_id
+                j for j in filtered if query in j.name.lower() or query in j.job_id
             ]
 
         if tab.sort_mode == "time":
@@ -779,6 +766,9 @@ class SlurmhubApp(App):
                 profile_names=list(self._profile_tabs.keys()),
                 ssh_client=tab.ssh_client if tab else None,
                 ssh_timeout=tab.profile.ssh_timeout if tab else 10,
+                log_view_command=(
+                    tab.profile.log.view_command if tab else "tail -f {log_path}"
+                ),
             )
         )
 
@@ -815,6 +805,7 @@ class SlurmhubApp(App):
                 selected_job,
                 tab.ssh_client,
                 tab.profile.ssh_timeout,
+                log_view_command=tab.profile.log.view_command,
                 repository=self.repository,
                 database=self.database,
                 profile_name=name,
@@ -941,9 +932,7 @@ class SlurmhubApp(App):
             except Exception as exc:
                 return profile_name, job.job_id, "err", str(exc)
 
-        self.run_worker(
-            _run, thread=True, name=f"scancel-{profile_name}-{job.job_id}"
-        )
+        self.run_worker(_run, thread=True, name=f"scancel-{profile_name}-{job.job_id}")
 
     def action_yank_job_id(self) -> None:
         """Copy the selected job's ID to the system clipboard via OSC 52."""

@@ -29,14 +29,59 @@ def _a_job(session, state=None):
     return session.jobs[0]
 
 
+def _detail_rows(view):
+    rows = {}
+    for i in range(view.details_table.rowCount()):
+        key_item = view.details_table.item(i, 0)
+        value_item = view.details_table.item(i, 1)
+        if key_item is None or value_item is None:
+            continue
+        rows[key_item.text()] = value_item.text()
+    return rows
+
+
 def test_job_detail_loads_details(demo_controller, qtbot):
     session = _refresh(demo_controller, qtbot)
     job = _a_job(session, "RUNNING")
     view = JobDetailView(demo_controller, "demo", job, _Nav())
     qtbot.addWidget(view)
-    qtbot.waitUntil(lambda: "Loading" not in view.info.text(), timeout=5000)
+    qtbot.waitUntil(lambda: view.details_table.rowCount() > 0, timeout=5000)
+    rows = _detail_rows(view)
     assert job.job_id in view.title.text()
-    assert "Partition" in view.info.text()
+    assert "Partition" in rows
+
+
+def test_job_detail_opens_log_with_scontrol_path(demo_controller, qtbot, monkeypatch):
+    session = _refresh(demo_controller, qtbot)
+    job = _a_job(session, "RUNNING")
+    nav = _Nav()
+    view = JobDetailView(demo_controller, "demo", job, nav)
+    qtbot.addWidget(view)
+    qtbot.waitUntil(lambda: view.details_table.rowCount() > 0, timeout=5000)
+    monkeypatch.setattr(LogViewer, "_start_stream", lambda self: None)
+
+    view._open_log()
+
+    assert isinstance(nav.opened, LogViewer)
+    assert nav.opened.log_path == view._stdout_path
+
+
+def test_job_detail_falls_back_to_persisted_history(
+    demo_controller, qtbot, monkeypatch
+):
+    session = _refresh(demo_controller, qtbot)
+    job = next((j for j in session.jobs if j.state == "COMPLETED"), session.jobs[0])
+    monkeypatch.setattr(
+        "slurmhub.gui.views.job_detail_view.fetch_job_details",
+        lambda *_args, **_kwargs: None,
+    )
+
+    view = JobDetailView(demo_controller, "demo", job, _Nav())
+    qtbot.addWidget(view)
+    qtbot.waitUntil(lambda: view.details_table.rowCount() > 0, timeout=5000)
+
+    assert "persisted history from the local database" in view.details_status.text()
+    assert "No live or persisted detail data" not in view.details_status.text()
 
 
 def test_log_viewer_streams_demo_content(demo_controller, qtbot):
@@ -45,12 +90,48 @@ def test_log_viewer_streams_demo_content(demo_controller, qtbot):
     view = LogViewer(demo_controller, "demo", job, _Nav())
     qtbot.addWidget(view)
     try:
-        qtbot.waitUntil(
-            lambda: bool(view.text.toPlainText().strip()), timeout=5000
-        )
+        qtbot.waitUntil(lambda: bool(view.text.toPlainText().strip()), timeout=5000)
         assert view.text.toPlainText().strip()
     finally:
         view.teardown()
+
+
+def test_log_viewer_prefers_explicit_log_path(demo_controller, qtbot, monkeypatch):
+    session = _refresh(demo_controller, qtbot)
+    job = _a_job(session)
+    monkeypatch.setattr(LogViewer, "_start_stream", lambda self: None)
+
+    view = LogViewer(
+        demo_controller,
+        "demo",
+        job,
+        _Nav(),
+        log_path="/tmp/from-scontrol.out",
+    )
+    qtbot.addWidget(view)
+
+    assert view.log_path == "/tmp/from-scontrol.out"
+    assert view._build_stream_command() == "tail -n 50 -f /tmp/from-scontrol.out"
+
+
+def test_log_viewer_uses_configured_command_template(
+    demo_controller, qtbot, monkeypatch
+):
+    session = _refresh(demo_controller, qtbot)
+    session.profile.log.view_command = "less +F {log_path}"
+    job = _a_job(session)
+    monkeypatch.setattr(LogViewer, "_start_stream", lambda self: None)
+
+    view = LogViewer(
+        demo_controller,
+        "demo",
+        job,
+        _Nav(),
+        log_path="/tmp/logs with space.out",
+    )
+    qtbot.addWidget(view)
+
+    assert view._build_stream_command() == "less +F '/tmp/logs with space.out'"
 
 
 def test_batch_script_view_loads(demo_controller, qtbot):

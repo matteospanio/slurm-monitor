@@ -104,11 +104,12 @@ def parse_pending_details(output: str) -> dict[str, PendingInfo]:
 
 
 def fetch_pending_details(
-    client: SSHClient, timeout: int = 10
+    client: SSHClient, timeout: int = 10, include_all: bool = False
 ) -> dict[str, PendingInfo]:
-    """Fetch pending details for the current user's pending jobs."""
+    """Fetch pending details for either user jobs or all pending jobs."""
+    scope = "" if include_all else "--me "
     output = client.execute(
-        'squeue --me -t PENDING --noheader -o "%i|%r|%Q|%V|%q"', timeout
+        f'squeue {scope}-t PENDING --noheader -o "%i|%r|%Q|%V|%q"', timeout
     )
     return parse_pending_details(output)
 

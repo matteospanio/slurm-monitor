@@ -129,7 +129,9 @@ class TestLogPathResolver:
             }
         )
         resolver = LogPathResolver(log_config)
-        assert resolver._extract_project_name("/home/user/ml_project/exp1") == "ml_project"
+        assert (
+            resolver._extract_project_name("/home/user/ml_project/exp1") == "ml_project"
+        )
 
     def test_extract_project_name_not_found(self):
         log_config = LogConfig(
@@ -152,7 +154,10 @@ class TestLogPathResolver:
             work_dir="/scratch/user/experiments",
             project_name="exp_2024",
         )
-        assert path == "/scratch/user/experiments/runs/exp_2024/output/job_12345/stdout.log"
+        assert (
+            path
+            == "/scratch/user/experiments/runs/exp_2024/output/job_12345/stdout.log"
+        )
 
     def test_resolve_view_command(self):
         log_config = LogConfig(view_command="less +F {log_path}")
@@ -168,6 +173,23 @@ class TestLogPathResolver:
             job_id="12345", work_dir="/home/user/project"
         )
         assert cmd == "tail -f /home/user/project/logs/12345.out"
+
+    def test_render_view_command_preserves_legacy_tail_lines_default(self):
+        resolver = LogPathResolver(LogConfig())
+        cmd = resolver.render_view_command(
+            "/home/user/project/logs/12345.out", tail_lines=50
+        )
+        assert cmd == "tail -n 50 -f /home/user/project/logs/12345.out"
+
+    def test_render_view_command_quotes_path(self):
+        resolver = LogPathResolver(LogConfig())
+        cmd = resolver.render_view_command("/tmp/my logs/12345.out", tail_lines=50)
+        assert cmd == "tail -n 50 -f '/tmp/my logs/12345.out'"
+
+    def test_render_view_command_custom_template(self):
+        resolver = LogPathResolver(LogConfig(view_command="less +F {log_path}"))
+        cmd = resolver.render_view_command("/tmp/my logs/12345.out", tail_lines=50)
+        assert cmd == "less +F '/tmp/my logs/12345.out'"
 
 
 class TestResolveLogPathFunction:

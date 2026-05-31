@@ -6,9 +6,9 @@ GUI is the default; the TUI is still available with `slurmhub --tui`.
 ![SlurmHub desktop GUI — job queue](../_static/screenshots/gui-queue-dark.png)
 
 If you have Python ≥ 3.12 you can keep using the [PyPI install](installation.md)
-(`uv tool install slurmhub`, `pipx install slurmhub`, …) — it gives you both the GUI
-and the TUI. The standalone binaries below bundle their own Python, so they need
-**no prior install**.
+(`uv tool install slurmhub`, `pipx install slurmhub`, …). Add the optional
+`tui` extra/group if you want the terminal UI (`slurmhub --tui`). The standalone
+binaries below bundle their own Python, so they need **no prior install**.
 
 ## Standalone binaries
 

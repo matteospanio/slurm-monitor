@@ -36,6 +36,8 @@ class JobDetails:
     mem_used: str = ""
     mem_percentage: float = 0.0
     num_cpus: int = 0
+    total_cpu: str = ""
+    cpu_percentage: float = 0.0
     num_gpus: int = 0
     gpu_type: str = ""
     gpus: list[GpuInfo] = field(default_factory=list)
@@ -185,19 +187,25 @@ def parse_nvidia_smi_output(output: str) -> list[GpuInfo]:
         if len(parts) < 5:
             continue
         try:
-            gpus.append(GpuInfo(
-                index=int(parts[0]),
-                name=parts[1],
-                utilization=int(parts[2]),
-                mem_used_mb=int(parts[3]),
-                mem_total_mb=int(parts[4]),
-            ))
+            gpus.append(
+                GpuInfo(
+                    index=int(parts[0]),
+                    name=parts[1],
+                    utilization=int(parts[2]),
+                    mem_used_mb=int(parts[3]),
+                    mem_total_mb=int(parts[4]),
+                )
+            )
         except (ValueError, IndexError):
             continue
     return gpus
 
 
-def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "", gpus: Optional[list[GpuInfo]] = None) -> JobDetails:
+def build_job_details(
+    scontrol_data: dict[str, str],
+    mem_used_raw: str = "",
+    gpus: Optional[list[GpuInfo]] = None,
+) -> JobDetails:
     """Build a JobDetails from parsed scontrol data and optional sstat memory.
 
     Args:
@@ -249,6 +257,43 @@ def build_job_details(scontrol_data: dict[str, str], mem_used_raw: str = "", gpu
     )
 
 
+def _parse_sstat_usage(output: str) -> tuple[str, str]:
+    """Parse sstat output into (MaxRSS, TotalCPU).
+
+    Supports both legacy single-field output (``MaxRSS`` only) and
+    parsable two-field output (``MaxRSS|TotalCPU``).
+    """
+    for line in output.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+            return parts[0], ""
+        return line, ""
+    return "", ""
+
+
+def _cpu_utilization_percentage(
+    total_cpu_str: str, run_time_str: str, num_cpus: int
+) -> float:
+    """Estimate CPU utilization percent from Slurm totals.
+
+    ``TotalCPU`` is interpreted as aggregate CPU time consumed by the step.
+    Utilization is ``TotalCPU / (elapsed * allocated_cpus)`` in percent.
+    """
+    if not total_cpu_str or num_cpus <= 0:
+        return 0.0
+    total_cpu_seconds = time_to_seconds(total_cpu_str)
+    run_seconds = time_to_seconds(run_time_str)
+    if total_cpu_seconds <= 0 or run_seconds <= 0:
+        return 0.0
+    pct = total_cpu_seconds / (run_seconds * num_cpus) * 100.0
+    return round(max(0.0, min(100.0, pct)), 1)
+
+
 def fetch_job_details(
     client: SSHClient, job_id: str, timeout: int = 10
 ) -> Optional[JobDetails]:
@@ -273,16 +318,18 @@ def fetch_job_details(
 
     # For running jobs, fetch live stats
     mem_used_raw = ""
+    total_cpu_raw = ""
     gpu_list: list[GpuInfo] = []
     state = scontrol_data.get("JobState", "")
     if state == "RUNNING":
         # Memory usage via sstat
         try:
             sstat_out = client.execute(
-                f"sstat --format=MaxRSS -j {job_id}.batch --noheader 2>/dev/null",
+                f"sstat --format=MaxRSS,TotalCPU -j {job_id}.batch "
+                "--parsable2 --noheader 2>/dev/null",
                 timeout,
             )
-            mem_used_raw = sstat_out.strip()
+            mem_used_raw, total_cpu_raw = _parse_sstat_usage(sstat_out)
         except Exception:
             pass
 
@@ -302,4 +349,9 @@ def fetch_job_details(
             except Exception:
                 pass
 
-    return build_job_details(scontrol_data, mem_used_raw, gpu_list)
+    details = build_job_details(scontrol_data, mem_used_raw, gpu_list)
+    details.total_cpu = total_cpu_raw
+    details.cpu_percentage = _cpu_utilization_percentage(
+        total_cpu_raw, details.run_time, details.num_cpus
+    )
+    return details

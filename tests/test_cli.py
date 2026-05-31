@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -96,15 +97,17 @@ class TestCliWizardWiring:
         monkeypatch.setattr(
             ConfigLoader, "locate", staticmethod(lambda p: (target, False))
         )
-        monkeypatch.setattr(
-            cli, "run_first_run_wizard", lambda p: None
-        )
+        monkeypatch.setattr(cli, "run_first_run_wizard", lambda p: None)
         with patch("slurmhub.tui.app.SlurmhubApp") as ctor:
             runner = CliRunner()
             result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code != 0
             ctor.assert_not_called()
-            assert "Setup cancelled" in result.output or "Setup cancelled" in result.stderr_bytes.decode("utf-8", errors="replace")
+            assert (
+                "Setup cancelled" in result.output
+                or "Setup cancelled"
+                in result.stderr_bytes.decode("utf-8", errors="replace")
+            )
 
     def test_gui_first_run_invokes_qt_wizard(self, monkeypatch, tmp_path):
         """GUI first-run uses the Qt wizard, then launches the GUI."""
@@ -118,7 +121,10 @@ class TestCliWizardWiring:
             "slurmhub.gui.dialogs.first_run_wizard.run_first_run_wizard_qt", wizard
         )
         gui = MagicMock()
-        with patch("slurmhub.gui.app.run_gui", gui), patch("slurmhub.tui.app.SlurmhubApp") as tui:
+        with (
+            patch("slurmhub.gui.app.run_gui", gui),
+            patch("slurmhub.tui.app.SlurmhubApp") as tui,
+        ):
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code == 0, result.output
@@ -128,7 +134,7 @@ class TestCliWizardWiring:
 
     def test_existing_config_skips_wizard(self, monkeypatch, tmp_path):
         target = tmp_path / "config.toml"
-        target.write_text("[defaults]\n[profiles.test]\nhost = \"realhost\"\n")
+        target.write_text('[defaults]\n[profiles.test]\nhost = "realhost"\n')
         monkeypatch.setattr(
             ConfigLoader, "locate", staticmethod(lambda p: (target, True))
         )
@@ -150,9 +156,10 @@ class TestCliWizardWiring:
             ConfigLoader, "locate", staticmethod(lambda p: (target, True))
         )
         gui_mock = MagicMock()
-        with patch("slurmhub.gui.app.run_gui", gui_mock) as gui, patch(
-            "slurmhub.tui.app.SlurmhubApp"
-        ) as tui_ctor:
+        with (
+            patch("slurmhub.gui.app.run_gui", gui_mock) as gui,
+            patch("slurmhub.tui.app.SlurmhubApp") as tui_ctor,
+        ):
             runner = CliRunner()
             result = runner.invoke(cli.main, [])
             assert result.exit_code == 0, result.output
@@ -176,3 +183,21 @@ class TestCliWizardWiring:
             wizard_mock.assert_not_called()
             (passed_config,), _ = ctor.call_args
             assert passed_config.profiles["default"].ssh.host == "manualhost"
+
+    def test_tui_missing_dependencies_returns_click_error(self, monkeypatch, tmp_path):
+        target = tmp_path / "config.toml"
+        target.write_text('[defaults]\n[profiles.test]\nhost = "realhost"\n')
+        monkeypatch.setattr(
+            ConfigLoader, "locate", staticmethod(lambda p: (target, True))
+        )
+
+        def _raise_missing() -> None:
+            raise click.ClickException("Terminal UI dependencies are not installed")
+
+        monkeypatch.setattr(cli, "_require_tui_dependencies", _raise_missing)
+
+        runner = CliRunner()
+        result = runner.invoke(cli.main, ["--tui"])
+
+        assert result.exit_code != 0
+        assert "Terminal UI dependencies are not installed" in result.output

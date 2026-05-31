@@ -82,3 +82,56 @@ def test_settings_readonly_in_demo(qtbot):
     qtbot.addWidget(view)
     assert not view.save_button.isEnabled()
     controller.shutdown()
+
+
+def test_settings_save_requires_host(qtbot, tmp_path, monkeypatch):
+    target = tmp_path / "config.toml"
+    controller = AppController(_config(), demo=False, config_path=target)
+    view = SettingsView(controller)
+    qtbot.addWidget(view)
+
+    captured: dict[str, str] = {}
+
+    def _warning(_parent, title: str, text: str) -> None:
+        captured["title"] = title
+        captured["text"] = text
+
+    monkeypatch.setattr(
+        "slurmhub.gui.views.settings_view.QMessageBox.warning", _warning
+    )
+
+    view.f_host.setText("")
+    view._save()
+
+    assert not target.exists()
+    assert captured["title"] == "Invalid profile settings"
+    assert "missing the SSH host" in captured["text"]
+    assert view.status.text() == "Fix profile validation errors before saving."
+    controller.shutdown()
+
+
+def test_settings_save_rejects_missing_ssh_key_file(qtbot, tmp_path, monkeypatch):
+    target = tmp_path / "config.toml"
+    controller = AppController(_config(), demo=False, config_path=target)
+    view = SettingsView(controller)
+    qtbot.addWidget(view)
+
+    captured: dict[str, str] = {}
+
+    def _warning(_parent, title: str, text: str) -> None:
+        captured["title"] = title
+        captured["text"] = text
+
+    monkeypatch.setattr(
+        "slurmhub.gui.views.settings_view.QMessageBox.warning", _warning
+    )
+
+    missing_key = tmp_path / "id_rsa_missing"
+    view.f_key.setText(str(missing_key))
+    view._save()
+
+    assert not target.exists()
+    assert captured["title"] == "Invalid profile settings"
+    assert "does not exist" in captured["text"]
+    assert view.status.text() == "Fix profile validation errors before saving."
+    controller.shutdown()

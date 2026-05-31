@@ -52,9 +52,18 @@ class TestParseScontrolOutput:
         assert data["Partition"] == "allgroups"
         assert data["NodeList"] == "runner-01"
         assert data["ReqTRES"] == "cpu=12,mem=512G,node=1,billing=12"
-        assert data["StdOut"] == "/home/spanio/jobs/tmp/mxlGPT/logs/preprocess_all_4138646.out"
-        assert data["StdErr"] == "/home/spanio/jobs/tmp/mxlGPT/logs/preprocess_all_4138646.err"
-        assert data["Command"] == "/home/spanio/jobs/tmp/mxlGPT/scripts/unipd_preprocess.sh"
+        assert (
+            data["StdOut"]
+            == "/home/spanio/jobs/tmp/mxlGPT/logs/preprocess_all_4138646.out"
+        )
+        assert (
+            data["StdErr"]
+            == "/home/spanio/jobs/tmp/mxlGPT/logs/preprocess_all_4138646.err"
+        )
+        assert (
+            data["Command"]
+            == "/home/spanio/jobs/tmp/mxlGPT/scripts/unipd_preprocess.sh"
+        )
 
     def test_empty_output(self):
         assert parse_scontrol_output("") == {}
@@ -177,9 +186,7 @@ class TestFetchJobDetails:
         config = SSHConfig(host="testhost")
         client = SSHClient(config)
 
-        with patch.object(
-            client, "execute", side_effect=SSHConnectionError("fail")
-        ):
+        with patch.object(client, "execute", side_effect=SSHConnectionError("fail")):
             details = fetch_job_details(client, "4138646")
 
         assert details is None
@@ -200,7 +207,9 @@ class TestFetchJobDetails:
         assert details.num_cpus == 12
 
     def test_completed_job_skips_sstat(self):
-        completed_output = SCONTROL_OUTPUT.replace("JobState=RUNNING", "JobState=COMPLETED")
+        completed_output = SCONTROL_OUTPUT.replace(
+            "JobState=RUNNING", "JobState=COMPLETED"
+        )
         config = SSHConfig(host="testhost")
         client = SSHClient(config)
 
@@ -236,6 +245,21 @@ class TestFetchJobDetails:
         assert len(details.gpus) == 2
         assert details.gpus[0].utilization == 100
         assert details.gpus[1].mem_used_mb == 43315
+
+    def test_running_job_parses_total_cpu_utilization(self):
+        config = SSHConfig(host="testhost")
+        client = SSHClient(config)
+
+        with patch.object(client, "execute") as mock_exec:
+            mock_exec.side_effect = [
+                SCONTROL_OUTPUT,  # scontrol
+                "300876720K|1-12:00:00",  # sstat MaxRSS|TotalCPU
+            ]
+            details = fetch_job_details(client, "4138646")
+
+        assert details is not None
+        assert details.total_cpu == "1-12:00:00"
+        assert details.cpu_percentage > 0
 
 
 class TestParseTresGpu:
@@ -295,9 +319,13 @@ class TestParseNvidiaSmiOutput:
 
 class TestGpuInfo:
     def test_mem_percentage(self):
-        gpu = GpuInfo(index=0, name="L40S", utilization=100, mem_used_mb=43299, mem_total_mb=46068)
+        gpu = GpuInfo(
+            index=0, name="L40S", utilization=100, mem_used_mb=43299, mem_total_mb=46068
+        )
         assert gpu.mem_percentage == pytest.approx(94.0, abs=0.1)
 
     def test_mem_percentage_zero_total(self):
-        gpu = GpuInfo(index=0, name="L40S", utilization=0, mem_used_mb=0, mem_total_mb=0)
+        gpu = GpuInfo(
+            index=0, name="L40S", utilization=0, mem_used_mb=0, mem_total_mb=0
+        )
         assert gpu.mem_percentage == 0.0

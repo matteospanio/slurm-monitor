@@ -176,9 +176,9 @@ def seed_demo_database(db: Database) -> None:
 
         # Time-series snapshots with measured utilization for the GPU jobs.
         now = utcnow()
-        for job_id, util, mem_used in (
-            ("421578", [88, 91, 94, 90, 92, 89], 41024),
-            ("421579", [74, 76, 71, 78, 73], 52214),
+        for job_id, util, cpu_util, mem_used in (
+            ("421578", [88, 91, 94, 90, 92, 89], [82, 84, 86, 83, 85, 84], 41024),
+            ("421579", [74, 76, 71, 78, 73], [63, 65, 61, 66, 64], 52214),
         ):
             job = by_id[job_id]
             n = len(util)
@@ -192,14 +192,13 @@ def seed_demo_database(db: Database) -> None:
                         gpu_count=job.gpu_count,
                         num_cpus=job.num_cpus,
                         mem_requested_mb=job.mem_requested_mb,
+                        cpu_util_avg=cpu_util[i],
                         gpu_util_avg=u,
                         mem_used_mb=mem_used,
                     )
                 )
 
         # Favourites: one with a note, one plain.
-        session.add(
-            Favourite(job_pk=by_id["421421"].id, note="baseline run — keep")
-        )
+        session.add(Favourite(job_pk=by_id["421421"].id, note="baseline run — keep"))
         session.add(Favourite(job_pk=by_id["421578"].id, note=""))
         session.commit()

@@ -39,6 +39,9 @@ class JobDetailScreen(Screen):
         Binding("e", "view_stderr", "View stderr"),
         Binding("v", "view_script", "Batch script"),
         Binding("c", "cancel_job", "scancel"),
+        Binding("r", "requeue_job", "Requeue"),
+        Binding("h", "hold_job", "Hold"),
+        Binding("l", "release_job", "Release"),
         Binding("y", "yank", "Copy"),
         Binding("f", "toggle_favourite", "★ Favourite"),
         Binding("n", "edit_note", "Note"),
@@ -72,6 +75,7 @@ class JobDetailScreen(Screen):
         job: SlurmJob,
         ssh_client: SSHClient,
         ssh_timeout: int = 10,
+        log_view_command: str = "tail -f {log_path}",
         repository: "Optional[Repository]" = None,
         database: "Optional[Database]" = None,
         profile_name: str = "",
@@ -80,6 +84,7 @@ class JobDetailScreen(Screen):
         self.job = job
         self.ssh_client = ssh_client
         self.ssh_timeout = ssh_timeout
+        self.log_view_command = log_view_command
         self.details: Optional[JobDetails] = None
         # Cycle index for the `y` (yank) action — increments each time.
         self._yank_idx: int = 0
@@ -115,8 +120,10 @@ class JobDetailScreen(Screen):
         # Only react to the detail-fetch worker. Other workers
         # (e.g. detail-scancel-*, detail-fav-*) report their own results.
         worker_name = event.worker.name or ""
-        if worker_name.startswith("detail-scancel-") or worker_name.startswith(
-            "detail-fav-"
+        if (
+            worker_name.startswith("detail-scancel-")
+            or worker_name.startswith("detail-fav-")
+            or worker_name.startswith("detail-action-")
         ):
             return
 
@@ -184,7 +191,9 @@ class JobDetailScreen(Screen):
             if d.num_gpus > 0:
                 text.append(f"\n\n{_SEPARATOR}\n")
                 text.append("GPUs", style="bold underline")
-                gpu_label = f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                gpu_label = (
+                    f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                )
                 text.append(f"\n  Allocated: ", style="dim")
                 text.append(gpu_label, style="cyan")
                 if d.gpus:
@@ -205,7 +214,9 @@ class JobDetailScreen(Screen):
                 text.append(str(d.num_cpus))
             if d.num_gpus:
                 text.append("\n  GPUs:      ", style="dim")
-                gpu_label = f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                gpu_label = (
+                    f"{d.num_gpus}x {d.gpu_type}" if d.gpu_type else str(d.num_gpus)
+                )
                 text.append(gpu_label)
             if d.partition:
                 text.append("\n  Partition: ", style="dim")
@@ -271,14 +282,30 @@ class JobDetailScreen(Screen):
     def action_view_stdout(self) -> None:
         path = self._get_log_path("stdout")
         if path:
-            self.app.push_screen(LogScreen(self.job, path, self.ssh_client, stream="stdout"))
+            self.app.push_screen(
+                LogScreen(
+                    self.job,
+                    path,
+                    self.ssh_client,
+                    stream="stdout",
+                    view_command_template=self.log_view_command,
+                )
+            )
         else:
             self.notify("No stdout path available", severity="warning", timeout=3)
 
     def action_view_stderr(self) -> None:
         path = self._get_log_path("stderr")
         if path:
-            self.app.push_screen(LogScreen(self.job, path, self.ssh_client, stream="stderr"))
+            self.app.push_screen(
+                LogScreen(
+                    self.job,
+                    path,
+                    self.ssh_client,
+                    stream="stderr",
+                    view_command_template=self.log_view_command,
+                )
+            )
         else:
             self.notify("No stderr path available", severity="warning", timeout=3)
 
@@ -444,25 +471,65 @@ class JobDetailScreen(Screen):
     def _do_scancel(self, job: SlurmJob, confirmed) -> None:
         if not confirmed:
             return
+
+        self._run_job_command(job, "scancel", "Cancelled")
+
+    def action_requeue_job(self) -> None:
+        """Requeue this job from the detail screen."""
+        from slurmhub.tui.widgets.confirm_screen import ConfirmScreen
+
+        target = self.job
+        msg = (
+            f"Requeue job {target.job_id} ({target.name})? "
+            "It will be cancelled and re-run from the start."
+        )
+        self.app.push_screen(
+            ConfirmScreen(msg, dangerous=True, confirm_label="requeue"),
+            callback=lambda yes: self._do_requeue(target, yes),
+        )
+
+    def _do_requeue(self, job: SlurmJob, confirmed) -> None:
+        if not confirmed:
+            return
+
+        self._run_job_command(job, "scontrol requeue", "Requeued")
+
+    def action_hold_job(self) -> None:
+        """Hold this job from the detail screen."""
+        self._run_job_command(self.job, "scontrol hold", "Held")
+
+    def action_release_job(self) -> None:
+        """Release this job from the detail screen."""
+        self._run_job_command(self.job, "scontrol release", "Released")
+
+    def _run_job_command(self, job: SlurmJob, command: str, success: str) -> None:
+        """Run a one-shot job command via SSH and report the result."""
         import shlex
 
         quoted = shlex.quote(job.job_id)
+        base = command.split()[0]
 
         def _run() -> None:
             try:
-                self.ssh_client.execute(
-                    f"scancel {quoted}", timeout=self.ssh_timeout
-                )
+                self.ssh_client.execute(f"{command} {quoted}", timeout=self.ssh_timeout)
             except Exception as exc:
                 self.app.call_from_thread(
-                    self.notify, f"scancel failed: {exc}", severity="error", timeout=5
+                    self.notify,
+                    f"{base} failed: {exc}",
+                    severity="error",
+                    timeout=5,
                 )
                 return
             self.app.call_from_thread(
-                self.notify, f"Cancelled job {job.job_id}", timeout=3
+                self.notify, f"{success} job {job.job_id}", timeout=3
             )
 
-        self.run_worker(_run, thread=True, name=f"detail-scancel-{job.job_id}")
+        action = command.replace(" ", "-")
+        self.run_worker(
+            _run,
+            thread=True,
+            name=f"detail-action-{action}-{job.job_id}",
+        )
 
     def action_yank(self) -> None:
         """Copy a job-related value to the clipboard. Cycles through targets."""

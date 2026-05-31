@@ -24,10 +24,8 @@ def test_upgrade_is_idempotent():
     with engine.connect() as conn:
         from sqlalchemy import text
 
-        version = conn.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).scalar()
-    assert version == "0001"
+        version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    assert version == "0002"
 
 
 def test_initial_revision_module_is_packaged():
@@ -36,6 +34,7 @@ def test_initial_revision_module_is_packaged():
     mod = importlib.import_module("slurmhub.db.alembic.versions")
     versions_dir = Path(mod.__file__).parent
     assert (versions_dir / "0001_initial.py").exists()
+    assert (versions_dir / "0002_snapshot_cpu_util.py").exists()
 
 
 def test_open_database_creates_file_and_dir(tmp_path):

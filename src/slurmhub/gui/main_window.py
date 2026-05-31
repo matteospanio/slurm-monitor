@@ -1,10 +1,4 @@
-"""The main dashboard window: sidebar shell + stacked screens.
-
-Phase 0 wires the shell (sidebar nav, profile switcher, header connection
-strip, status bar, docs link) with placeholder pages. Later phases replace the
-placeholders with the real Queue / Cluster / History / Settings views; the
-shell, routing, and signal plumbing stay.
-"""
+"""The main dashboard window: sidebar shell + stacked screens."""
 
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
@@ -53,23 +47,6 @@ def _app_version() -> str:
         return version("slurmhub")
     except PackageNotFoundError:  # pragma: no cover — running from a checkout
         return "dev"
-
-
-def _placeholder(title: str, subtitle: str = "") -> QWidget:
-    """A simple centred placeholder page used until a real view lands."""
-    page = QWidget()
-    layout = QVBoxLayout(page)
-    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    heading = QLabel(title)
-    heading.setStyleSheet("font-size: 18pt; font-weight: bold;")
-    heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(heading)
-    if subtitle:
-        sub = QLabel(subtitle)
-        sub.setObjectName("HeaderStatus")
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(sub)
-    return page
 
 
 class MainWindow(QMainWindow):
@@ -141,9 +118,7 @@ class MainWindow(QMainWindow):
         self.nav_list.setIconSize(QSize(16, 16))
         # Few, fixed entries: never scroll. Letting the list fill the space
         # below the switcher (stretch 1) keeps its viewport >= its content.
-        self.nav_list.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.nav_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.nav_list.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
@@ -208,19 +183,82 @@ class MainWindow(QMainWindow):
         self.cluster_view = ClusterView(self.controller)
         self._pages["cluster"] = self.cluster_view
 
-        self.history_view = HistoryView(self.controller)
+        self.history_view = HistoryView(self.controller, navigator=self)
         self._pages["history"] = self.history_view
 
         self.settings_view = SettingsView(self.controller)
         self._pages["settings"] = self.settings_view
-        self._pages["about"] = _placeholder(
-            "SlurmHub", f"v{_app_version()} · {DOCS_URL}"
-        )
+        self._pages["about"] = self._build_about_page()
 
         for _label, key, _icon in NAV_ITEMS:
             self.stack.addWidget(self._pages[key])
         # The permanent nav pages are never torn down by go_back().
         self._permanent_pages = set(self._pages.values())
+
+    def _build_about_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel(f"SlurmHub v{_app_version()}")
+        title.setObjectName("HeaderHost")
+        layout.addWidget(title)
+
+        intro = QLabel(
+            "Monitor Slurm jobs in real time, inspect completed runs, and "
+            "review persisted CPU/GPU/memory usage over time."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        quick = QLabel(
+            "Quick navigation:\n"
+            "• Queue: live jobs and actions.\n"
+            "• Cluster: queue pressure and node health.\n"
+            "• History: completed runs, favourites, notes, and analytics.\n"
+            "• Settings: profiles, SSH options, history capture, and theme."
+        )
+        quick.setObjectName("AboutHelpText")
+        quick.setWordWrap(True)
+        layout.addWidget(quick)
+
+        actions = QHBoxLayout()
+
+        docs = QPushButton("Open documentation")
+        docs.setObjectName("AboutDocsButton")
+        docs.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DOCS_URL)))
+        actions.addWidget(docs)
+
+        settings = QPushButton("Open settings")
+        settings.setObjectName("AboutSettingsButton")
+        settings.clicked.connect(lambda: self._open_nav_page("settings"))
+        actions.addWidget(settings)
+
+        refresh = QPushButton("Refresh active profile")
+        refresh.setObjectName("AboutRefreshButton")
+        refresh.clicked.connect(self.controller.force_refresh_active)
+        actions.addWidget(refresh)
+        actions.addStretch(1)
+
+        layout.addLayout(actions)
+
+        tip = QLabel(
+            "Tip: in Queue, right-click a row for Details, Log, and "
+            "cancel/requeue/hold/release actions."
+        )
+        tip.setObjectName("HeaderStatus")
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+        layout.addStretch(1)
+
+        return page
+
+    def _open_nav_page(self, key: str) -> None:
+        for row, (_label, item_key, _icon) in enumerate(NAV_ITEMS):
+            if item_key == key:
+                self.nav_list.setCurrentRow(row)
+                return
 
     # ── system tray ──────────────────────────────────────────────────
     def _build_tray(self) -> "QSystemTrayIcon | None":
@@ -267,9 +305,7 @@ class MainWindow(QMainWindow):
         from slurmhub.gui.workers import run_async
 
         version_str = current_version()
-        run_async(
-            lambda: check_for_update(version_str), self._on_update_check
-        )
+        run_async(lambda: check_for_update(version_str), self._on_update_check)
 
     def _on_update_check(self, info) -> None:
         if info is None:
@@ -344,10 +380,7 @@ class MainWindow(QMainWindow):
                 f"{jid} {state.lower()}" for jid, _n, state in transitions[:5]
             )
         self.statusBar().showMessage(f"{title} — {body}", 8000)
-        if (
-            self._tray is not None
-            and settings.value("notify/enabled", True, type=bool)
-        ):
+        if self._tray is not None and settings.value("notify/enabled", True, type=bool):
             self._tray.showMessage(title, body)
 
     def closeEvent(self, event) -> None:
@@ -418,9 +451,7 @@ class MainWindow(QMainWindow):
         if ok:
             self.statusBar().showMessage(f"{verb} {job_id}: ok", 4000)
         else:
-            self.statusBar().showMessage(
-                f"{verb} {job_id} failed: {message}", 8000
-            )
+            self.statusBar().showMessage(f"{verb} {job_id} failed: {message}", 8000)
 
     # ── view sync ────────────────────────────────────────────────────
     def _sync_active_profile_view(self) -> None:

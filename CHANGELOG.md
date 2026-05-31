@@ -88,6 +88,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `slurmhub` now launches the desktop GUI by default; pass `--tui` for the terminal
   UI (handy over SSH) or `--gui` to force the GUI. `--demo` works for both.
+- TUI packages (`textual`, `rich`) were moved out of core dependencies into a
+  dedicated optional `tui` dependency set (`slurmhub[tui]`) and a matching
+  `uv` dependency group (`--group tui`). GUI installs stay lean by default.
 - **Source tree reorganised by concern** into clearly separated namespaces so the
   codebase is easier to navigate and test: `slurmhub.slurm` (SSH transport + Slurm
   command parsers + demo fixtures), `slurmhub.core` (job aggregation, queue stats,
@@ -100,6 +103,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Log streaming now honours `log.view_command` in both UIs. The configured
+  template is used for the remote stream command in the TUI and GUI,
+  `{log_path}` substitution is shell-quoted for safety, and the historical
+  default still streams with `tail -n 50 -f` when the template is unchanged.
+- The GUI now records measured-utilisation snapshots on the configured
+  `[database] utilization_interval` cadence when
+  `[database] capture_utilization = true`, matching the existing TUI behaviour
+  and feeding history analytics with measured GPU% / memory samples.
+- Opening logs from the GUI Job Detail page now prefers the authoritative
+  `scontrol` StdOut/StdErr paths (when available) instead of always rebuilding a
+  fallback from `work_dir`.
+- The TUI Job Detail screen now supports requeue / hold / release actions
+  (`scontrol requeue|hold|release`) in addition to `scancel`, with matching
+  keybindings and help text.
+- GUI Job Detail now falls back to persisted run data when live `scontrol`
+  details are unavailable (common for completed jobs): stored metadata,
+  stdout/stderr paths, and usage summaries are shown instead of a blank/error
+  panel.
+- Per-run usage snapshots are now surfaced in the GUI Job Detail as a
+  time-series plot (measured GPU% and measured CPU% over captured samples,
+  with allocated CPUs for context), enabling post-mortem inspection of
+  finished jobs.
+- The GUI Job Detail page was visually refreshed: usage timeline plotting now
+  uses a native interactive pyqtgraph chart (no WebEngine required), and
+  textual metadata was replaced with a structured card + two-column details
+  table for better readability.
+- History capture now stores one terminal-state snapshot per run (at most once),
+  so completed/failed/cancelled jobs retain a persisted final usage point for
+  future analysis.
+- The GUI Queue screen now supports scope switching between **My jobs** and the
+  **Entire cluster queue**; cluster scope uses all-queue `squeue` data and keeps
+  state-changing actions read-only.
+- GUI controller action coordination now queues job actions while refresh /
+  utilisation work is in flight and drains them safely, preventing SSH races
+  without dropping user requests.
+- GUI Settings now validates profile data before saving: SSH host is required,
+  and any configured SSH key path must exist as a file, with clear inline
+  feedback when validation fails.
+- The GUI About section is now a real help page with quick navigation guidance
+  and direct actions to open docs, jump to Settings, and refresh the active
+  profile.
+- The GUI History screen now opens Job Detail directly from the runs table
+  (double-click a row or use the new Details action), so past runs are
+  inspectable without returning to Queue first.
+- GUI history capture remains **my-jobs only** even when Queue is switched to
+  cluster scope: refresh now performs a separate `squeue --me` pass for history
+  persistence, preventing other users' jobs from polluting local history.
 - Test suite is now deterministically **offline and non-interactive**: a global
   `tests/conftest.py` forces the headless Qt platform for the whole suite and turns
   any real SSH connection into a handled "host unreachable" error, so on-mount

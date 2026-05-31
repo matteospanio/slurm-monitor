@@ -34,7 +34,8 @@ async def test_refresh_writes_snapshots_for_running_jobs():
             runs = repo.query_runs(s)
             # Active + historical demo jobs are all recorded.
             assert len(runs) >= 5
-            # The running demo jobs accrue snapshots; terminal ones do not.
+            # Running jobs accrue cyclical snapshots, and terminal runs keep one
+            # final snapshot for persisted post-mortem metrics.
             running_ids = {r.job_id for r in runs if r.state == "RUNNING"}
             assert running_ids
             snap_job_pks = {row.job_pk for row in s.query(UsageSnapshot).all()}
@@ -43,7 +44,12 @@ async def test_refresh_writes_snapshots_for_running_jobs():
                 r.pk for r in runs if r.state in ("COMPLETED", "FAILED", "CANCELLED")
             }
             assert snap_job_pks & running_pks  # running jobs snapshotted
-            assert not (snap_job_pks & terminal_pks)  # terminal jobs not
+            assert snap_job_pks & terminal_pks  # terminal jobs keep a final point
+            for pk in terminal_pks:
+                count = (
+                    s.query(UsageSnapshot).filter(UsageSnapshot.job_pk == pk).count()
+                )
+                assert count <= 1
 
 
 @pytest.mark.asyncio

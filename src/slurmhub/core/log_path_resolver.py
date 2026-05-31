@@ -1,5 +1,6 @@
 """Log path resolution strategy for Slurm jobs."""
 
+import shlex
 from typing import Optional
 
 from slurmhub.config import LogConfig, ProfileConfig
@@ -71,7 +72,36 @@ class LogPathResolver:
             Resolved view command string (e.g. "tail -f /path/to/log")
         """
         log_path = self.resolve_path(job_id, work_dir, project_name)
-        return self.log_config.view_command.replace("{log_path}", log_path)
+        # Keep historical behavior for this API: plain substitution with the
+        # resolved path (no shell quoting and no tail-line injection).
+        return self.render_view_command(log_path, quote_path=False)
+
+    def render_view_command(
+        self,
+        log_path: str,
+        *,
+        tail_lines: Optional[int] = None,
+        quote_path: bool = True,
+    ) -> str:
+        """Render the configured view command for an already-known log path.
+
+        Args:
+            log_path: Fully resolved path to the log file.
+            tail_lines: Optional line count for the legacy default tail command.
+            quote_path: Shell-quote ``log_path`` before substitution.
+
+        Returns:
+            Shell command ready for remote execution.
+        """
+        template = self.log_config.view_command
+        rendered_path = shlex.quote(log_path) if quote_path else log_path
+
+        # Preserve the historical default behavior used by both UIs: when the
+        # config still has the default template, stream the last N lines first.
+        if template.strip() == "tail -f {log_path}" and tail_lines is not None:
+            return f"tail -n {tail_lines} -f {rendered_path}"
+
+        return template.replace("{log_path}", rendered_path)
 
     def _get_pattern(
         self,

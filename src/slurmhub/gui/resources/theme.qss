@@ -115,6 +115,28 @@ QToolTip {
     border-radius: 6px;
 }
 
+QFrame#JobCard {
+    background-color: $surface;
+    border: 1px solid $border;
+    border-radius: 10px;
+}
+
+QLabel#JobCardTitle {
+    font-weight: bold;
+    font-size: 11pt;
+    color: $text;
+}
+
+QLabel#JobCardSubtitle {
+    color: $text_muted;
+}
+
+QWidget#JobUsagePlot {
+    border: 1px solid $border;
+    border-radius: 8px;
+    background-color: $surface;
+}
+
 #UpdateBanner {
     background-color: $accent;
 }
@@ -151,6 +173,17 @@ QTableView {
 
 QTableView::item {
     padding: 4px 6px;
+}
+
+QTableWidget#JobDetailsTable {
+    background-color: transparent;
+    alternate-background-color: $surface2;
+    border: none;
+    gridline-color: $border;
+}
+
+QTableWidget#JobDetailsTable::item {
+    padding: 6px 8px;
 }
 
 /* ── Buttons / inputs ──────────────────────────────────────────── */

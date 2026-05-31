@@ -38,6 +38,9 @@ is the union of all of them.
 | `e` | Open the log viewer on `StdErr` |
 | `v` | Open the batch script viewer |
 | `c` | `scancel` this job |
+| `r` | Requeue this job (`scontrol requeue`) |
+| `h` | Hold this job (`scontrol hold`) |
+| `l` | Release this job (`scontrol release`) |
 | `f` | Toggle this run as a favourite |
 | `n` | Edit the favourite's note |
 | `y` | Cycle yank: job ID → stdout path → stderr path → work dir |

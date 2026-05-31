@@ -131,6 +131,7 @@ class HistoryScreen(Screen):
         profile_names: list[str],
         ssh_client: "Optional[SSHClient]" = None,
         ssh_timeout: int = 10,
+        log_view_command: str = "tail -f {log_path}",
     ) -> None:
         super().__init__()
         self.database = database
@@ -139,6 +140,7 @@ class HistoryScreen(Screen):
         self.profile_names = profile_names
         self.ssh_client = ssh_client
         self.ssh_timeout = ssh_timeout
+        self.log_view_command = log_view_command
 
         self.mode = "list"  # or "aggregates"
         self.scope_all = False
@@ -166,8 +168,17 @@ class HistoryScreen(Screen):
         table.cursor_type = "row"
         table.zebra_stripes = True
         table.add_columns(
-            "★", "Profile", "Job ID", "Name", "State", "Submit",
-            "Elapsed", "CPU", "GPU", "Mem", "Note",
+            "★",
+            "Profile",
+            "Job ID",
+            "Name",
+            "State",
+            "Submit",
+            "Elapsed",
+            "CPU",
+            "GPU",
+            "Mem",
+            "Note",
         )
         self.query_one("#history-aggregates", Static).display = False
         self._kick_query()
@@ -473,6 +484,7 @@ class HistoryScreen(Screen):
                 job,
                 self.ssh_client,
                 self.ssh_timeout,
+                log_view_command=self.log_view_command,
                 repository=self.repository,
                 database=self.database,
                 profile_name=run.profile_name,

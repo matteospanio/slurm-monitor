@@ -33,3 +33,14 @@ with a warning — no SSH round trip happens.
 `slurmhub` runs Slurm's standard `scancel` command — it does not call
 `scancel --signal=KILL`, `scancel --batch`, or any of the more aggressive forms. If
 you need those, use the shell. The TUI is intentionally conservative here.
+
+## Related job actions
+
+From the job detail screen, SlurmHub also supports:
+
+- `r` → `scontrol requeue <jobid>`
+- `h` → `scontrol hold <jobid>`
+- `l` → `scontrol release <jobid>`
+
+These follow Slurm's semantics directly; failures are surfaced as error
+notifications in the app.

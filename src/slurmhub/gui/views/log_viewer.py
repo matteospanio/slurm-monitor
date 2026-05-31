@@ -60,6 +60,7 @@ class LogViewer(QWidget):
         profile_name: str,
         job: SlurmJob,
         navigator,
+        log_path: Optional[str] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -69,9 +70,10 @@ class LogViewer(QWidget):
         session = controller.session(profile_name)
         self._client = session.ssh_client if session else None
         self._timeout = session.profile.ssh_timeout if session else 10
-        self.log_path = (
-            session.path_resolver.resolve_path(job.job_id, job.work_dir)
-            if session
+        self._resolver = session.path_resolver if session else None
+        self.log_path = log_path or (
+            self._resolver.resolve_path(job.job_id, job.work_dir)
+            if self._resolver
             else ""
         )
         self._streamer: Optional[LogStreamer] = None
@@ -123,10 +125,15 @@ class LogViewer(QWidget):
         if self._client is None:
             self.text.appendPlainText("(no SSH session)")
             return
-        command = f"tail -n 50 -f {self.log_path}"
+        command = self._build_stream_command()
         self._streamer = LogStreamer(self._client, command, self._timeout)
         self._streamer.line.connect(self._append_line)
         self._streamer.start()
+
+    def _build_stream_command(self) -> str:
+        if self._resolver is None:
+            return f"tail -n 50 -f {self.log_path}"
+        return self._resolver.render_view_command(self.log_path, tail_lines=50)
 
     def _append_line(self, text: str) -> None:
         self.text.appendPlainText(text)
@@ -148,12 +155,12 @@ class LogViewer(QWidget):
 
     def _find_prev(self) -> None:
         if self.search.text():
-            self.text.find(
-                self.search.text(), QTextDocument.FindFlag.FindBackward
-            )
+            self.text.find(self.search.text(), QTextDocument.FindFlag.FindBackward)
 
     def _save(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Save log", f"{self.job.job_id}.log")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save log", f"{self.job.job_id}.log"
+        )
         if path:
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(self.text.toPlainText())

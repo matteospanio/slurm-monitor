@@ -14,7 +14,7 @@ def test_queue_populates_from_demo(demo_controller, qtbot):
     _populate(demo_controller, qtbot)
     view.reload()
     assert view.model.rowCount() > 0
-    assert "cluster:" in view.summary.text()
+    assert "Queue:" in view.summary.text()
 
 
 def test_state_filter_reduces_rows(demo_controller, qtbot):
@@ -30,9 +30,7 @@ def test_state_filter_reduces_rows(demo_controller, qtbot):
     session = demo_controller.session("demo")
     assert session.state_filter == "RUNNING"
     assert 0 < running <= total
-    assert all(
-        view.model.job_at(r).state == "RUNNING" for r in range(running)
-    )
+    assert all(view.model.job_at(r).state == "RUNNING" for r in range(running))
 
 
 def test_search_filters_by_name_or_id(demo_controller, qtbot):
@@ -74,7 +72,10 @@ def test_cancel_button_disabled_for_terminal_jobs(demo_controller, qtbot):
     _select_proxy_row(view, 0)
     job = view.selected_job()
     expected = job is not None and job.state not in {
-        "COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        "TIMEOUT",
     }
     assert view.cancel_button.isEnabled() == expected
 
@@ -82,9 +83,7 @@ def test_cancel_button_disabled_for_terminal_jobs(demo_controller, qtbot):
 def test_cancel_job_runs_through_controller(demo_controller, qtbot, monkeypatch):
     # Cancelling a running demo job emits jobActionFinished(ok=True); the demo
     # SSH client treats scancel as a no-op success.
-    monkeypatch.setattr(
-        "slurmhub.gui.views.queue_view.confirm", lambda *a, **k: True
-    )
+    monkeypatch.setattr("slurmhub.gui.views.queue_view.confirm", lambda *a, **k: True)
     view = QueueView(demo_controller)
     qtbot.addWidget(view)
     _populate(demo_controller, qtbot)
@@ -99,3 +98,16 @@ def test_cancel_job_runs_through_controller(demo_controller, qtbot, monkeypatch)
         view._cancel_selected()
     _profile, _job_id, verb, ok, _msg = blocker.args
     assert verb == "cancel" and ok is True
+
+
+def test_scope_toggle_switches_to_cluster_queue_mode(demo_controller, qtbot):
+    view = QueueView(demo_controller)
+    qtbot.addWidget(view)
+    _populate(demo_controller, qtbot)
+
+    with qtbot.waitSignal(demo_controller.jobsUpdated, timeout=5000):
+        view.scope_combo.setCurrentIndex(1)
+
+    session = demo_controller.session("demo")
+    assert session.queue_scope == "all"
+    assert "Cluster scope enabled" in view.mode_hint.text()

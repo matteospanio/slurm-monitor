@@ -1,6 +1,7 @@
 """Tests for the History view: querying, favourites/notes, and analytics."""
 
 from slurmhub.gui.views.history_view import HistoryView, _fmt_elapsed, _fmt_gpu
+from slurmhub.gui.views.job_detail_view import JobDetailView
 
 
 def _wait_loaded(view, qtbot):
@@ -45,8 +46,7 @@ def test_state_filter_restricts_to_completed(demo_controller, qtbot):
         timeout=5000,
     )
     assert all(
-        view.model.row_at(r).state == "COMPLETED"
-        for r in range(view.model.rowCount())
+        view.model.row_at(r).state == "COMPLETED" for r in range(view.model.rowCount())
     )
 
 
@@ -68,6 +68,34 @@ def test_toggle_favourite_persists(demo_controller, qtbot):
         ),
         timeout=5000,
     )
+
+
+def test_open_details_from_history_row(demo_controller, qtbot):
+    class _Navigator:
+        def __init__(self):
+            self.opened = None
+
+        def open_subview(self, widget):
+            self.opened = widget
+
+        def go_back(self):
+            return None
+
+    navigator = _Navigator()
+    view = HistoryView(demo_controller, navigator=navigator)
+    qtbot.addWidget(view)
+    _wait_loaded(view, qtbot)
+
+    view.table.selectRow(0)
+    run = view.selected_run()
+    assert run is not None
+
+    view._open_details()
+
+    assert isinstance(navigator.opened, JobDetailView)
+    assert navigator.opened.profile_name == run.profile_name
+    assert navigator.opened.job.job_id == run.job_id
+    assert navigator.opened.job.submit_time == run.submit_time
 
 
 def test_history_disabled_without_database(qtbot):

@@ -13,6 +13,8 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog, Static
 
+from slurmhub.config import LogConfig
+from slurmhub.core.log_path_resolver import LogPathResolver
 from slurmhub.slurm.squeue import SlurmJob
 from slurmhub.slurm.ssh import SSHClient
 
@@ -93,6 +95,7 @@ class LogScreen(Screen):
         ssh_client: SSHClient,
         tail_lines: int = 50,
         stream: str = "stdout",
+        view_command_template: str = "tail -f {log_path}",
     ):
         super().__init__()
         self.job = job
@@ -100,6 +103,7 @@ class LogScreen(Screen):
         self.ssh_client = ssh_client
         self.tail_lines = tail_lines
         self.stream = stream
+        self.view_command_template = view_command_template
         self._stop_stream = False
         self._follow = True
         # Plain-text mirror of what we wrote to RichLog. Used for search
@@ -120,7 +124,10 @@ class LogScreen(Screen):
             id="log-header",
         )
         yield RichLog(
-            id="log-output", wrap=True, highlight=True, markup=False,
+            id="log-output",
+            wrap=True,
+            highlight=True,
+            markup=False,
             auto_scroll=True,
         )
         with LogSearchBar(id="log-search-bar"):
@@ -163,17 +170,23 @@ class LogScreen(Screen):
 
     def _stream_log(self) -> None:
         """Run tail -f on the remote host and feed lines to the log widget."""
+
         def _on_line(text: str) -> None:
             self.app.call_from_thread(self._push_line, text)
 
         try:
+            command = self._build_stream_command()
             self.ssh_client.stream_command(
-                f"tail -n {self.tail_lines} -f {self.log_path}",
+                command,
                 on_line=_on_line,
                 should_stop=lambda: self._stop_stream,
             )
         except Exception as e:
             self.app.call_from_thread(self._push_line, f"\n[ERROR] {e}")
+
+    def _build_stream_command(self) -> str:
+        resolver = LogPathResolver(LogConfig(view_command=self.view_command_template))
+        return resolver.render_view_command(self.log_path, tail_lines=self.tail_lines)
 
     def action_scroll_down(self) -> None:
         self.query_one("#log-output", RichLog).scroll_down()

@@ -5,6 +5,7 @@ import pytest
 from slurmhub.db.engine import Database, _run_migrations, make_engine
 from slurmhub.db.models import Job, UsageSnapshot
 from slurmhub.db.repository import Repository
+from slurmhub.slurm.scontrol import JobDetails
 from slurmhub.slurm.squeue import SlurmJob
 
 
@@ -87,8 +88,13 @@ class TestUpsertIdentity:
             repo.upsert_job(
                 s,
                 "p",
-                _job("1", submit="2026-01-01T00:00:00", gres="gpu:a100:4",
-                     num_cpus=8, mem=65536),
+                _job(
+                    "1",
+                    submit="2026-01-01T00:00:00",
+                    gres="gpu:a100:4",
+                    num_cpus=8,
+                    mem=65536,
+                ),
             )
             s.commit()
             run = repo.query_runs(s)[0]
@@ -115,8 +121,9 @@ class TestSnapshots:
         with db.session() as s:
             # All three runs recorded...
             assert len(repo.query_runs(s)) == 3
-            # ...but only the RUNNING one accrued a snapshot.
-            assert s.query(UsageSnapshot).count() == 1
+            # ...RUNNING accrues cyclical snapshots and terminal states get one
+            # final snapshot for long-term inspectability.
+            assert s.query(UsageSnapshot).count() == 2
         db.close()
 
     def test_terminal_job_does_not_accrue_snapshots_across_cycles(self):
@@ -130,5 +137,49 @@ class TestSnapshots:
         with db.session() as s:
             repo.capture_refresh(s, "p", done, utcnow())
         with db.session() as s:
-            assert s.query(UsageSnapshot).count() == 0
+            # Exactly one terminal snapshot is stored, even across cycles.
+            assert s.query(UsageSnapshot).count() == 1
+        db.close()
+
+    def test_run_snapshot_summary_and_series(self):
+        db = fresh_db()
+        repo = Repository()
+        from slurmhub.db.models import utcnow
+
+        job = _job(
+            "77",
+            state="RUNNING",
+            submit="2026-01-01T00:00:00",
+            num_cpus=16,
+            gres="gpu:2",
+            mem=32768,
+        )
+        with db.session() as s:
+            pk = repo.upsert_job(s, "p", job)
+            t1 = utcnow()
+            d1 = JobDetails(num_cpus=16, total_cpu="00:08:00", cpu_percentage=80.0)
+            repo.record_snapshot(s, pk, job, t1, d1)
+            t2 = utcnow()
+            d2 = JobDetails(num_cpus=16, total_cpu="00:12:00", cpu_percentage=60.0)
+            repo.record_snapshot(
+                s,
+                pk,
+                _job("77", state="RUNNING", time="00:20:00"),
+                t2,
+                d2,
+            )
+            s.commit()
+
+            summary = repo.summarize_run_snapshots(s, pk)
+            points = repo.get_run_snapshots(s, pk)
+
+            assert summary.snapshot_count == 2
+            assert summary.first_captured_at is not None
+            assert summary.last_captured_at is not None
+            assert summary.avg_cpu_util == 70.0
+            assert summary.peak_cpu_util == 80
+            assert len(points) == 2
+            assert points[0].num_cpus == 16
+            assert points[0].cpu_util_avg == 80
+            assert points[-1].elapsed_seconds is not None
         db.close()

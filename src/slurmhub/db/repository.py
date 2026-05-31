@@ -104,6 +104,38 @@ class UsageTotals:
     per_profile: list["UsageTotals"] = field(default_factory=list)
 
 
+@dataclass
+class SnapshotSummary:
+    """Summary stats computed from a run's usage snapshots."""
+
+    snapshot_count: int = 0
+    first_captured_at: Optional[datetime] = None
+    last_captured_at: Optional[datetime] = None
+    latest_cpu_util: Optional[int] = None
+    avg_cpu_util: Optional[float] = None
+    peak_cpu_util: Optional[int] = None
+    latest_gpu_util: Optional[int] = None
+    avg_gpu_util: Optional[float] = None
+    peak_gpu_util: Optional[int] = None
+    latest_mem_used_mb: Optional[int] = None
+    peak_mem_used_mb: Optional[int] = None
+
+
+@dataclass
+class SnapshotPoint:
+    """One persisted usage point for a run's time series."""
+
+    captured_at: datetime
+    state: Optional[str]
+    elapsed_seconds: Optional[int]
+    num_cpus: Optional[int]
+    gpu_count: Optional[int]
+    cpu_util_avg: Optional[int]
+    gpu_util_avg: Optional[int]
+    mem_requested_mb: Optional[int]
+    mem_used_mb: Optional[int]
+
+
 class Repository:
     """CRUD + query surface over the history tables."""
 
@@ -116,11 +148,18 @@ class Repository:
         jobs: list[SlurmJob],
         captured_at: datetime,
     ) -> None:
-        """Upsert every job and append a snapshot for the actively-running ones."""
+        """Upsert every job and append snapshots for active/final states.
+
+        Running-like states are snapshotted each cycle. Terminal states get one
+        final snapshot (at most once) so completed jobs retain inspectable
+        CPU/GPU/memory history even after they leave the queue.
+        """
         for job in jobs:
             pk = self.upsert_job(session, profile_name, job)
             if job.state in SNAPSHOT_STATES:
                 self.record_snapshot(session, pk, job, captured_at)
+            elif job.state in TERMINAL_STATES:
+                self._record_terminal_snapshot_once(session, pk, job, captured_at)
         session.commit()
 
     def upsert_job(
@@ -135,7 +174,9 @@ class Repository:
         Merges a real ``submit_time`` into an earlier ``""`` placeholder row in
         place so the surrogate PK (and snapshot FKs) stay stable.
         """
-        submit = (job.submit_time or (details.submit_time if details else "") or "").strip()
+        submit = (
+            job.submit_time or (details.submit_time if details else "") or ""
+        ).strip()
 
         row = session.scalar(
             select(Job).where(
@@ -224,9 +265,12 @@ class Repository:
         if mem_mb is None and details and details.mem_requested:
             mem_mb = mem_str_to_mb(details.mem_requested)
 
+        cpu_util_avg: Optional[int] = None
         gpu_util_avg: Optional[int] = None
         mem_used_mb: Optional[int] = None
         if details:
+            if details.total_cpu:
+                cpu_util_avg = round(details.cpu_percentage)
             if details.gpus:
                 gpu_util_avg = round(
                     sum(g.utilization for g in details.gpus) / len(details.gpus)
@@ -245,10 +289,29 @@ class Repository:
                 gpu_count=gpu_count,
                 num_cpus=num_cpus,
                 mem_requested_mb=mem_mb,
+                cpu_util_avg=cpu_util_avg,
                 gpu_util_avg=gpu_util_avg,
                 mem_used_mb=mem_used_mb,
             )
         )
+
+    def _record_terminal_snapshot_once(
+        self,
+        session: Session,
+        job_pk: int,
+        job: SlurmJob,
+        captured_at: datetime,
+    ) -> None:
+        """Append one terminal-state snapshot for a run, once."""
+        latest_state = session.scalar(
+            select(UsageSnapshot.state)
+            .where(UsageSnapshot.job_pk == job_pk)
+            .order_by(UsageSnapshot.captured_at.desc(), UsageSnapshot.id.desc())
+            .limit(1)
+        )
+        if latest_state in TERMINAL_STATES:
+            return
+        self.record_snapshot(session, job_pk, job, captured_at)
 
     # ── favourites ────────────────────────────────────────────────────────
 
@@ -266,9 +329,7 @@ class Repository:
 
     def favourite_state(self, session: Session, job_pk: int) -> tuple[bool, str]:
         """Return ``(is_favourite, note)`` for a run."""
-        fav = session.scalar(
-            select(Favourite).where(Favourite.job_pk == job_pk)
-        )
+        fav = session.scalar(select(Favourite).where(Favourite.job_pk == job_pk))
         if fav is None:
             return False, ""
         return True, fav.note
@@ -281,9 +342,7 @@ class Repository:
         note: Optional[str] = None,
     ) -> None:
         """Star or unstar a run (keyed on the surrogate PK)."""
-        existing = session.scalar(
-            select(Favourite).where(Favourite.job_pk == job_pk)
-        )
+        existing = session.scalar(select(Favourite).where(Favourite.job_pk == job_pk))
         if favourite:
             if existing is None:
                 session.add(Favourite(job_pk=job_pk, note=note or ""))
@@ -295,9 +354,7 @@ class Repository:
 
     def set_note(self, session: Session, job_pk: int, note: str) -> None:
         """Set a run's note, starring it if it was not already a favourite."""
-        existing = session.scalar(
-            select(Favourite).where(Favourite.job_pk == job_pk)
-        )
+        existing = session.scalar(select(Favourite).where(Favourite.job_pk == job_pk))
         if existing is None:
             session.add(Favourite(job_pk=job_pk, note=note))
         else:
@@ -305,6 +362,115 @@ class Repository:
         session.commit()
 
     # ── reads (history-screen worker) ─────────────────────────────────────
+
+    @staticmethod
+    def _to_job_run(job: Job, fav: Favourite | None) -> JobRun:
+        return JobRun(
+            pk=job.id,
+            profile_name=job.profile_name,
+            job_id=job.job_id,
+            name=job.name,
+            state=job.state,
+            submit_time=job.submit_time,
+            start_time=job.start_time,
+            end_time=job.end_time,
+            elapsed_seconds=job.elapsed_seconds,
+            num_cpus=job.num_cpus,
+            gpu_count=job.gpu_count,
+            gpu_type=job.gpu_type,
+            mem_requested_mb=job.mem_requested_mb,
+            partition=job.partition,
+            work_dir=job.work_dir,
+            stdout_path=job.stdout_path,
+            stderr_path=job.stderr_path,
+            favourite=fav is not None,
+            note=fav.note if fav is not None else None,
+            last_seen=job.last_seen,
+        )
+
+    def get_run_by_pk(self, session: Session, job_pk: int) -> Optional[JobRun]:
+        """Return one run by surrogate PK as a detached DTO."""
+        row = session.execute(
+            select(Job, Favourite)
+            .outerjoin(Favourite, Favourite.job_pk == Job.id)
+            .where(Job.id == job_pk)
+            .limit(1)
+        ).first()
+        if row is None:
+            return None
+        job, fav = row
+        return self._to_job_run(job, fav)
+
+    def latest_run_for_job(
+        self, session: Session, profile_name: str, job_id: str
+    ) -> Optional[JobRun]:
+        """Return the most recently-seen run for ``(profile_name, job_id)``."""
+        row = session.execute(
+            select(Job, Favourite)
+            .outerjoin(Favourite, Favourite.job_pk == Job.id)
+            .where(Job.profile_name == profile_name, Job.job_id == job_id)
+            .order_by(Job.last_seen.desc(), Job.id.desc())
+            .limit(1)
+        ).first()
+        if row is None:
+            return None
+        job, fav = row
+        return self._to_job_run(job, fav)
+
+    def summarize_run_snapshots(self, session: Session, job_pk: int) -> SnapshotSummary:
+        """Return aggregate metrics for one run's usage snapshot timeline."""
+        rows = session.scalars(
+            select(UsageSnapshot)
+            .where(UsageSnapshot.job_pk == job_pk)
+            .order_by(UsageSnapshot.captured_at.asc(), UsageSnapshot.id.asc())
+        ).all()
+        if not rows:
+            return SnapshotSummary()
+
+        cpu_values = [r.cpu_util_avg for r in rows if r.cpu_util_avg is not None]
+        gpu_values = [r.gpu_util_avg for r in rows if r.gpu_util_avg is not None]
+        mem_values = [r.mem_used_mb for r in rows if r.mem_used_mb is not None]
+        latest = rows[-1]
+
+        return SnapshotSummary(
+            snapshot_count=len(rows),
+            first_captured_at=rows[0].captured_at,
+            last_captured_at=latest.captured_at,
+            latest_cpu_util=latest.cpu_util_avg,
+            avg_cpu_util=(
+                round(sum(cpu_values) / len(cpu_values), 1) if cpu_values else None
+            ),
+            peak_cpu_util=max(cpu_values) if cpu_values else None,
+            latest_gpu_util=latest.gpu_util_avg,
+            avg_gpu_util=(
+                round(sum(gpu_values) / len(gpu_values), 1) if gpu_values else None
+            ),
+            peak_gpu_util=max(gpu_values) if gpu_values else None,
+            latest_mem_used_mb=latest.mem_used_mb,
+            peak_mem_used_mb=max(mem_values) if mem_values else None,
+        )
+
+    def get_run_snapshots(self, session: Session, job_pk: int) -> list[SnapshotPoint]:
+        """Return the full snapshot timeline for one run (oldest first)."""
+        rows = session.scalars(
+            select(UsageSnapshot)
+            .where(UsageSnapshot.job_pk == job_pk)
+            .order_by(UsageSnapshot.captured_at.asc(), UsageSnapshot.id.asc())
+        ).all()
+        return [
+            SnapshotPoint(
+                captured_at=row.captured_at,
+                state=row.state,
+                elapsed_seconds=row.elapsed_seconds,
+                num_cpus=row.num_cpus,
+                gpu_count=row.gpu_count,
+                cpu_util_avg=row.cpu_util_avg,
+                gpu_util_avg=row.gpu_util_avg,
+                mem_requested_mb=row.mem_requested_mb,
+                mem_used_mb=row.mem_used_mb,
+            )
+            for row in rows
+        ]
 
     def query_runs(
         self,
@@ -320,9 +486,7 @@ class Repository:
         offset: int = 0,
     ) -> list[JobRun]:
         """Return matching runs (newest last-seen first) as detached DTOs."""
-        stmt = select(Job, Favourite).outerjoin(
-            Favourite, Favourite.job_pk == Job.id
-        )
+        stmt = select(Job, Favourite).outerjoin(Favourite, Favourite.job_pk == Job.id)
         if profile:
             stmt = stmt.where(Job.profile_name == profile)
         if states:
@@ -336,34 +500,15 @@ class Repository:
         if search:
             like = f"%{search}%"
             stmt = stmt.where(Job.name.ilike(like) | Job.job_id.ilike(like))
-        stmt = stmt.order_by(Job.last_seen.desc(), Job.id.desc()).limit(limit).offset(offset)
+        stmt = (
+            stmt.order_by(Job.last_seen.desc(), Job.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
 
         runs: list[JobRun] = []
         for job, fav in session.execute(stmt).all():
-            runs.append(
-                JobRun(
-                    pk=job.id,
-                    profile_name=job.profile_name,
-                    job_id=job.job_id,
-                    name=job.name,
-                    state=job.state,
-                    submit_time=job.submit_time,
-                    start_time=job.start_time,
-                    end_time=job.end_time,
-                    elapsed_seconds=job.elapsed_seconds,
-                    num_cpus=job.num_cpus,
-                    gpu_count=job.gpu_count,
-                    gpu_type=job.gpu_type,
-                    mem_requested_mb=job.mem_requested_mb,
-                    partition=job.partition,
-                    work_dir=job.work_dir,
-                    stdout_path=job.stdout_path,
-                    stderr_path=job.stderr_path,
-                    favourite=fav is not None,
-                    note=fav.note if fav is not None else None,
-                    last_seen=job.last_seen,
-                )
-            )
+            runs.append(self._to_job_run(job, fav))
         return runs
 
     def aggregate_usage(
@@ -410,9 +555,7 @@ class Repository:
         overall = groups.get(None, {"gpu": 0.0, "cpu": 0.0, "mem": 0.0, "count": 0})
         per_profile: list[UsageTotals] = []
         if profile is None:
-            named = sorted(
-                (k, v) for k, v in groups.items() if k is not None
-            )
+            named = sorted((k, v) for k, v in groups.items() if k is not None)
             for name, acc in named:
                 per_profile.append(
                     UsageTotals(
@@ -467,9 +610,7 @@ class Repository:
         cutoff = (now or utcnow()) - timedelta(days=retention_days)
         favourited = select(Favourite.job_pk)
         result = session.execute(
-            delete(Job).where(
-                Job.last_seen < cutoff, Job.id.notin_(favourited)
-            )
+            delete(Job).where(Job.last_seen < cutoff, Job.id.notin_(favourited))
         )
         session.commit()
         return result.rowcount or 0

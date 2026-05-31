@@ -117,6 +117,15 @@ class ProfileSession:
 
         # Auth handling.
         self._auth_attempts: int = 0
+        self.util_capture_in_progress = False
+
+        # Serialize one-shot actions with refresh/utilization work for this
+        # profile so the shared SSH session is never used concurrently.
+        self.action_in_progress = False
+        self.action_verb = ""
+        self.action_job_id = ""
+        self.pending_refresh = False
+        self.pending_actions: list[tuple[str, str, str]] = []
 
         # Job-state tracking for completion notifications.
         self._prev_states: dict[str, str] = {}
@@ -126,6 +135,7 @@ class ProfileSession:
         self.state_filter: str = "ALL"
         self.name_filter: str = ""
         self.sort_mode: str = "id"  # id, time, state, name
+        self.queue_scope: str = "me"  # me, all
 
     def close(self) -> None:
         self.ssh_client.close()
@@ -140,10 +150,7 @@ def get_filtered_jobs(session: ProfileSession) -> list[SlurmJob]:
 
     if session.name_filter:
         query = session.name_filter.lower()
-        filtered = [
-            j for j in filtered
-            if query in j.name.lower() or query in j.job_id
-        ]
+        filtered = [j for j in filtered if query in j.name.lower() or query in j.job_id]
 
     if session.sort_mode == "time":
         filtered = sort_jobs_by_time(filtered)
@@ -173,15 +180,27 @@ def fetch_profile_data(
     profile = session.profile
     timeout = profile.ssh_timeout
     try:
-        active_jobs = fetch_squeue_jobs(session.ssh_client, timeout=timeout)
+        include_all = session.queue_scope == "all"
+        active_jobs = fetch_squeue_jobs(
+            session.ssh_client,
+            timeout=timeout,
+            include_all=include_all,
+        )
 
         now = time.time()
         if now - session._sacct_last_fetch > profile.sacct_refresh_interval:
-            historical_jobs = fetch_sacct_jobs(session.ssh_client, timeout=timeout)
-            session._sacct_cache = historical_jobs
+            sacct_jobs = fetch_sacct_jobs(session.ssh_client, timeout=timeout)
+            session._sacct_cache = sacct_jobs
             session._sacct_last_fetch = now
         else:
-            historical_jobs = session._sacct_cache
+            sacct_jobs = session._sacct_cache
+
+        if include_all:
+            # Cluster scope is an active-queue display mode; keep history rows
+            # sourced from the current user's jobs only.
+            historical_jobs = []
+        else:
+            historical_jobs = sacct_jobs
 
         merged = merge_jobs(active_jobs, historical_jobs)
 
@@ -200,7 +219,11 @@ def fetch_profile_data(
         pending_ids = [j.job_id for j in merged if j.state == "PENDING"]
         if pending_ids:
             try:
-                details = fetch_pending_details(session.ssh_client, timeout=timeout)
+                details = fetch_pending_details(
+                    session.ssh_client,
+                    timeout=timeout,
+                    include_all=include_all,
+                )
                 ranks = compute_queue_ranks(
                     session.ssh_client, pending_ids, timeout=timeout
                 )
@@ -231,11 +254,26 @@ def fetch_profile_data(
 
         # Persist this cycle's jobs. Runs on the worker thread; any DB failure
         # is isolated as a partial error and never breaks live monitoring.
+        jobs_for_history = merged
+        if include_all:
+            # When browsing the full cluster queue, do a second cheap squeue
+            # pass for --me so the history DB does not ingest other users' jobs.
+            jobs_for_history = list(sacct_jobs)
+            try:
+                my_active_jobs = fetch_squeue_jobs(
+                    session.ssh_client,
+                    timeout=timeout,
+                    include_all=False,
+                )
+                jobs_for_history = merge_jobs(my_active_jobs, sacct_jobs)
+            except Exception as e:  # noqa: BLE001 — non-fatal
+                partial_errors["history_scope"] = str(e)
+
         if database is not None and repository is not None:
             try:
                 with database.session() as db_session:
                     repository.capture_refresh(
-                        db_session, profile_name, merged, utcnow()
+                        db_session, profile_name, jobs_for_history, utcnow()
                     )
             except Exception as e:  # noqa: BLE001 — non-fatal
                 partial_errors["db"] = str(e)
@@ -268,10 +306,10 @@ class AppController(QObject):
     before the signal fires, so slots just read session state.
     """
 
-    jobsUpdated = Signal(str)        # profile_name — jobs/queue/capacity refreshed
+    jobsUpdated = Signal(str)  # profile_name — jobs/queue/capacity refreshed
     connectionChanged = Signal(str)  # profile_name — loading / error state changed
-    fetchFailed = Signal(str, str)   # profile_name, message
-    authRequired = Signal(str)       # profile_name — SSH auth needs a credential
+    fetchFailed = Signal(str, str)  # profile_name, message
+    authRequired = Signal(str)  # profile_name — SSH auth needs a credential
     activeProfileChanged = Signal(str)
     # profile_name, job_id, verb, ok, message
     jobActionFinished = Signal(str, str, str, bool, str)
@@ -300,6 +338,7 @@ class AppController(QObject):
         }
         self._active: Optional[str] = next(iter(self.sessions), None)
         self._timers: dict[str, QTimer] = {}
+        self._util_timers: dict[str, QTimer] = {}
 
         # Filesystem snapshot cache (disabled in demo so fixtures never touch
         # the real config dir). Lives next to the config file.
@@ -341,6 +380,20 @@ class AppController(QObject):
             self._timers[name] = timer
             self.refresh_profile(name)
 
+        db_cfg = self.config.database
+        if (
+            self.database is not None
+            and self.repository is not None
+            and db_cfg.capture_utilization
+            and db_cfg.utilization_interval > 0
+        ):
+            for name in self.sessions:
+                timer = QTimer(self)
+                timer.setInterval(int(db_cfg.utilization_interval * 1000))
+                timer.timeout.connect(lambda n=name: self._capture_utilization(n))
+                timer.start()
+                self._util_timers[name] = timer
+
     def _load_cached_snapshots(self) -> None:
         """Populate sessions from disk so the UI has something to show at once."""
         if self._cache is None:
@@ -366,6 +419,8 @@ class AppController(QObject):
         """Stop timers, close SSH connections, and release the database."""
         for timer in self._timers.values():
             timer.stop()
+        for timer in self._util_timers.values():
+            timer.stop()
         self._pool.waitForDone(2000)
         for session in self.sessions.values():
             session.close()
@@ -375,7 +430,12 @@ class AppController(QObject):
     # ── refresh dispatch ─────────────────────────────────────────────
     def refresh_profile(self, name: str) -> None:
         session = self.sessions.get(name)
-        if session is None or session.refresh_in_progress:
+        if session is None:
+            return
+        if session.action_in_progress or session.util_capture_in_progress:
+            session.pending_refresh = True
+            return
+        if session.refresh_in_progress:
             return
         session.refresh_in_progress = True
         session.is_loading = True
@@ -453,6 +513,7 @@ class AppController(QObject):
                 self.jobsFinished.emit(name, transitions)
 
         self._rearm(name)
+        self._start_next_pending_action(name)
 
     def _save_snapshot(self, name: str, session: ProfileSession) -> None:
         """Persist the session's current displayable state for next launch."""
@@ -478,6 +539,71 @@ class AppController(QObject):
         if timer is not None and session is not None:
             timer.start(int(session.profile.refresh_interval * 1000))
 
+    # ── measured utilization capture ────────────────────────────────
+    def _capture_utilization(self, name: str) -> None:
+        """Record measured GPU% / memory snapshots for running jobs.
+
+        This runs on a slower cadence than the main refresh and is best-effort:
+        any failure is swallowed so live monitoring is never disrupted.
+        """
+        session = self.sessions.get(name)
+        if session is None:
+            return
+        if self.database is None or self.repository is None:
+            return
+        if session.refresh_in_progress or session.util_capture_in_progress:
+            return
+        if session.is_cached:
+            return
+        if not session.jobs:
+            return
+
+        session.util_capture_in_progress = True
+        task = FetchTask(self._capture_utilization_work, session, name)
+        task.signals.finished.connect(self._on_capture_utilization_done)
+        self._pool.start(task)
+
+    def _capture_utilization_work(
+        self, session: ProfileSession, profile_name: str
+    ) -> str:
+        from slurmhub.slurm.scontrol import fetch_job_details
+
+        running = [j for j in session.jobs if j.state == "RUNNING"]
+        if not running or self.database is None or self.repository is None:
+            return profile_name
+
+        captured = utcnow()
+        try:
+            with self.database.session() as db_session:
+                for job in running:
+                    try:
+                        details = fetch_job_details(
+                            session.ssh_client,
+                            job.job_id,
+                            session.profile.ssh_timeout,
+                        )
+                    except Exception:  # noqa: BLE001 — best effort
+                        details = None
+                    pk = self.repository.upsert_job(
+                        db_session, profile_name, job, details
+                    )
+                    self.repository.record_snapshot(
+                        db_session, pk, job, captured, details
+                    )
+                db_session.commit()
+        except Exception:  # noqa: BLE001 — never break the UI loop
+            pass
+        return profile_name
+
+    def _on_capture_utilization_done(self, profile_name: str) -> None:
+        session = self.sessions.get(profile_name)
+        if session is not None:
+            session.util_capture_in_progress = False
+            self._start_next_pending_action(profile_name)
+            if session.pending_refresh and not session.action_in_progress:
+                session.pending_refresh = False
+                self.refresh_profile(profile_name)
+
     # ── job actions (scancel / scontrol) ─────────────────────────────
     def run_job_command(
         self, profile_name: str, job_id: str, command: str, verb: str
@@ -498,6 +624,27 @@ class AppController(QObject):
                 profile_name, job_id, verb, False, "still loading live data"
             )
             return
+        if session.refresh_in_progress:
+            session.pending_actions.append((job_id, command, verb))
+            session.pending_refresh = True
+            self.connectionChanged.emit(profile_name)
+            return
+        if session.util_capture_in_progress:
+            session.pending_actions.append((job_id, command, verb))
+            session.pending_refresh = True
+            self.connectionChanged.emit(profile_name)
+            return
+        if session.action_in_progress:
+            session.pending_actions.append((job_id, command, verb))
+            session.pending_refresh = True
+            self.connectionChanged.emit(profile_name)
+            return
+
+        session.action_in_progress = True
+        session.action_verb = verb
+        session.action_job_id = job_id
+        self.connectionChanged.emit(profile_name)
+
         timeout = session.profile.ssh_timeout
         client = session.ssh_client
 
@@ -545,9 +692,37 @@ class AppController(QObject):
 
     def _on_action_result(self, result: tuple) -> None:
         profile_name, job_id, verb, ok, message = result
+        session = self.sessions.get(profile_name)
+        pending_refresh = False
+        if session is not None:
+            session.action_in_progress = False
+            session.action_verb = ""
+            session.action_job_id = ""
+            pending_refresh = session.pending_refresh
+            session.pending_refresh = False
+            self.connectionChanged.emit(profile_name)
+
         self.jobActionFinished.emit(profile_name, job_id, verb, ok, message)
-        if ok:
+        if session is not None and session.pending_actions:
+            self._start_next_pending_action(profile_name)
+            return
+        if ok or pending_refresh:
             self.refresh_profile(profile_name)
+
+    def _start_next_pending_action(self, profile_name: str) -> None:
+        session = self.sessions.get(profile_name)
+        if session is None:
+            return
+        if (
+            session.refresh_in_progress
+            or session.util_capture_in_progress
+            or session.action_in_progress
+        ):
+            return
+        if not session.pending_actions:
+            return
+        job_id, command, verb = session.pending_actions.pop(0)
+        self.run_job_command(profile_name, job_id, command, verb)
 
     # ── history maintenance ──────────────────────────────────────────
     def prune_history(self, retention_days: int) -> int:

@@ -21,6 +21,16 @@ recent history (from `sacct`).
 | Rank | computed from `squeue -t PENDING --sort=-Q` | Position of your pending job among **all** pending jobs in the cluster (1 = next up). |
 | Work Dir | `squeue %Z` / `sacct WorkDir` | Truncated to the last two path components for readability. |
 
+## Scope modes (GUI)
+
+The desktop GUI queue toolbar provides a scope switch:
+
+- **My jobs**: your active `squeue --me` jobs merged with your `sacct` history.
+- **Entire cluster queue**: all active jobs from `squeue` (cluster-wide).
+
+Cluster scope is intentionally read-only in the queue view: state-changing actions
+(cancel/requeue/hold/release) are disabled in this mode.
+
 ## Filtering
 
 State filters are per-tab and toggle on / off:

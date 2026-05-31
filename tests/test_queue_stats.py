@@ -50,8 +50,10 @@ class TestParsePendingDetails:
         result = parse_pending_details(output)
         assert len(result) == 2
         assert result["12345"] == PendingInfo(
-            reason="Resources", priority=5000,
-            submit_time="2026-04-13T10:00:00", qos="normal",
+            reason="Resources",
+            priority=5000,
+            submit_time="2026-04-13T10:00:00",
+            qos="normal",
         )
         assert result["12346"].priority == 3000
         assert result["12346"].qos == "high"
@@ -131,3 +133,12 @@ class TestFetchPendingDetails:
         assert "12345" in result
         assert result["12345"].reason == "Resources"
         client.execute.assert_called_once()
+
+    def test_fetches_all_pending_when_requested(self):
+        client = MagicMock()
+        client.execute.return_value = ""
+
+        fetch_pending_details(client, include_all=True)
+
+        cmd = client.execute.call_args[0][0]
+        assert cmd.startswith('squeue -t PENDING --noheader -o "')

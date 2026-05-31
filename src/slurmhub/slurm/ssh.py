@@ -147,9 +147,7 @@ class SSHClient:
         # When runtime credentials are provided, skip the SSH agent to
         # avoid exhausting MaxAuthTries with unrelated agent keys before
         # the password/passphrase is even attempted.
-        has_runtime_creds = bool(
-            self._runtime_password or self._runtime_passphrase
-        )
+        has_runtime_creds = bool(self._runtime_password or self._runtime_passphrase)
         kwargs: dict = {
             "hostname": hostname,
             "port": self.config.port,
@@ -238,9 +236,7 @@ class SSHClient:
         self.connect(timeout)
 
         try:
-            _, stdout, stderr = self._client.exec_command(
-                command, timeout=timeout
-            )
+            _, stdout, stderr = self._client.exec_command(command, timeout=timeout)
             exit_status = stdout.channel.recv_exit_status()
             output = stdout.read().decode("utf-8").strip()
 
@@ -371,6 +367,7 @@ class DemoSSHClient(SSHClient):
     def __init__(self, config: Optional[SSHConfig] = None):
         if config is None:
             from slurmhub.slurm.demo_data import DEMO_HOST, DEMO_USERNAME
+
             config = SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME)
         super().__init__(config)
 
@@ -397,12 +394,14 @@ class DemoSSHClient(SSHClient):
 
         cmd = command.strip()
 
-        # squeue --me with format string (active jobs)
-        if cmd.startswith("squeue --me -o "):
+        # squeue for active jobs (current user or whole queue)
+        if cmd.startswith("squeue --me -o ") or cmd.startswith("squeue -o "):
             return demo_data.SQUEUE_OUTPUT
 
-        # squeue --me -t PENDING -o "..." (pending details)
-        if cmd.startswith("squeue --me -t PENDING"):
+        # squeue pending detail rows (user or whole queue)
+        if cmd.startswith("squeue --me -t PENDING") or (
+            cmd.startswith("squeue -t PENDING") and "%i|%r|%Q|%V|%q" in cmd
+        ):
             return demo_data.SQUEUE_PENDING_DETAILS
 
         # squeue -t PENDING ... --sort=-Q (queue ranks)
@@ -471,12 +470,20 @@ class DemoSSHClient(SSHClient):
     ) -> None:
         """Replay canned log content for ``tail -f <path>`` commands."""
         from slurmhub.slurm import demo_data
+        import shlex
 
         cmd = command.strip()
-        # Expected form: ``tail -n 50 -f /path/to/log``
+        # Expected forms include ``tail -n 50 -f /path`` and custom commands
+        # containing ``-f <path>``. Parse with shlex so quoted paths work.
         path = ""
-        if "-f " in cmd:
-            path = cmd.split("-f ", 1)[1].strip()
+        try:
+            parts = shlex.split(cmd)
+        except Exception:
+            parts = cmd.split()
+        if "-f" in parts:
+            i = parts.index("-f")
+            if i + 1 < len(parts):
+                path = parts[i + 1]
         content = demo_data.get_log_content(path)
         for line in content.splitlines():
             if should_stop():

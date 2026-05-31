@@ -44,7 +44,9 @@ class TestLogScreen:
         screen = LogScreen(mock_job, "/path/to/log.out", mock_ssh_client)
         assert screen._stop_stream is False
 
-        with patch.object(type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())):
+        with patch.object(
+            type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())
+        ):
             screen.action_close()
 
         assert screen._stop_stream is True
@@ -52,11 +54,25 @@ class TestLogScreen:
     def test_close_is_idempotent(self, mock_job, mock_ssh_client):
         screen = LogScreen(mock_job, "/path/to/log.out", mock_ssh_client)
 
-        with patch.object(type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())):
+        with patch.object(
+            type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())
+        ):
             screen.action_close()
             screen.action_close()
 
         assert screen._stop_stream is True
+
+    def test_build_stream_command_uses_configured_template(
+        self, mock_job, mock_ssh_client
+    ):
+        screen = LogScreen(
+            mock_job,
+            "/tmp/my logs/log.out",
+            mock_ssh_client,
+            tail_lines=50,
+            view_command_template="less +F {log_path}",
+        )
+        assert screen._build_stream_command() == "less +F '/tmp/my logs/log.out'"
 
 
 class TestFindMatchIndices:
@@ -85,11 +101,15 @@ class TestLogScreenSaveAndYank:
         screen._lines = ["alpha\n", "beta", "gamma\n"]
 
         target = tmp_path / "out.log"
-        with patch.object(
-            LogScreen, "_default_save_path", return_value=target
-        ), patch.object(
-            type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())
-        ), patch.object(LogScreen, "notify"):
+        with (
+            patch.object(LogScreen, "_default_save_path", return_value=target),
+            patch.object(
+                type(screen),
+                "app",
+                new_callable=lambda: property(lambda self: MagicMock()),
+            ),
+            patch.object(LogScreen, "notify"),
+        ):
             screen.action_save_to_disk()
 
         content = target.read_text(encoding="utf-8")
@@ -105,11 +125,17 @@ class TestLogScreenSaveAndYank:
         screen = LogScreen(mock_job, "/path/log.out", mock_ssh_client)
         screen._lines = ["first", "last line"]
 
-        with patch(
-            "slurmhub.tui.widgets._clipboard.copy_osc52", return_value=True
-        ) as mock_copy, patch.object(
-            type(screen), "app", new_callable=lambda: property(lambda self: MagicMock())
-        ), patch.object(LogScreen, "notify"):
+        with (
+            patch(
+                "slurmhub.tui.widgets._clipboard.copy_osc52", return_value=True
+            ) as mock_copy,
+            patch.object(
+                type(screen),
+                "app",
+                new_callable=lambda: property(lambda self: MagicMock()),
+            ),
+            patch.object(LogScreen, "notify"),
+        ):
             screen.action_yank_line()
 
         mock_copy.assert_called_once_with("last line")

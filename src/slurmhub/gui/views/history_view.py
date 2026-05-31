@@ -42,6 +42,7 @@ from slurmhub.gui.icons import button_icon
 from slurmhub.gui.models.jobs_model import format_mem_mb
 from slurmhub.gui.models.simple_table import ROW_ROLE, Column, SimpleTableModel
 from slurmhub.gui.workers import FetchTask
+from slurmhub.slurm.squeue import SlurmJob
 
 # (key, label, days) — mirrors the TUI history screen.
 _DATE_RANGES = [
@@ -65,7 +66,9 @@ def _fmt_elapsed(secs: Optional[int]) -> str:
         return "" if secs is None else "0:00"
     hours, rem = divmod(secs, 3600)
     minutes, seconds = divmod(rem, 60)
-    return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+    return (
+        f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+    )
 
 
 def _fmt_dt(value) -> str:
@@ -75,7 +78,9 @@ def _fmt_dt(value) -> str:
 def _fmt_gpu(run) -> str:
     if not run.gpu_count:
         return ""
-    return f"{run.gpu_count}x {run.gpu_type}" if run.gpu_type else f"{run.gpu_count}x gpu"
+    return (
+        f"{run.gpu_count}x {run.gpu_type}" if run.gpu_type else f"{run.gpu_count}x gpu"
+    )
 
 
 _RUN_COLUMNS = [
@@ -95,10 +100,14 @@ _RUN_COLUMNS = [
 
 class HistoryView(QWidget):
     def __init__(
-        self, controller: AppController, parent: Optional[QWidget] = None
+        self,
+        controller: AppController,
+        navigator: Optional[QWidget] = None,
+        parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.controller = controller
+        self.navigator = navigator
         self._build_ui()
         self.reload()
 
@@ -170,6 +179,7 @@ class HistoryView(QWidget):
         self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.doubleClicked.connect(self._open_details)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
@@ -177,10 +187,13 @@ class HistoryView(QWidget):
         layout.addWidget(self.table, 1)
 
         actions = QHBoxLayout()
+        self.details_button = QPushButton(button_icon("fa5s.info-circle"), "Details")
+        self.details_button.clicked.connect(self._open_details)
         self.fav_button = QPushButton(button_icon("fa5s.star"), "Toggle favourite")
         self.fav_button.clicked.connect(self._toggle_favourite)
         self.note_button = QPushButton(button_icon("fa5s.pen"), "Edit note…")
         self.note_button.clicked.connect(self._edit_note)
+        actions.addWidget(self.details_button)
         actions.addWidget(self.fav_button)
         actions.addWidget(self.note_button)
         actions.addStretch(1)
@@ -262,9 +275,7 @@ class HistoryView(QWidget):
 
     def _update_usage(self, totals) -> None:
         util = (
-            f"{totals.avg_gpu_util:.0f}%"
-            if totals.avg_gpu_util is not None
-            else "n/a"
+            f"{totals.avg_gpu_util:.0f}%" if totals.avg_gpu_util is not None else "n/a"
         )
         self.usage_summary.setText(
             f"<b>{totals.job_count}</b> runs &nbsp;•&nbsp; "
@@ -298,9 +309,7 @@ class HistoryView(QWidget):
         series.attachAxis(axis_x)
 
         axis_y = QValueAxis()
-        max_val = max(
-            [r.gpu_hours for r in rows] + [r.cpu_hours for r in rows] + [1.0]
-        )
+        max_val = max([r.gpu_hours for r in rows] + [r.cpu_hours for r in rows] + [1.0])
         axis_y.setRange(0, max_val * 1.1)
         self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
@@ -340,6 +349,43 @@ class HistoryView(QWidget):
         repo = self.controller.repository
         new_state = not run.favourite
         self._mutate(lambda s: repo.set_favourite(s, run.pk, new_state))
+
+    def _open_details(self, *_args) -> None:
+        run = self.selected_run()
+        if run is None:
+            return
+        if self.navigator is None or not hasattr(self.navigator, "open_subview"):
+            return
+        if self.controller.session(run.profile_name) is None:
+            self.status.setText(
+                f"Cannot open details: profile '{run.profile_name}' no longer exists."
+            )
+            return
+
+        from slurmhub.gui.views.job_detail_view import JobDetailView
+
+        gres = None
+        if run.gpu_count:
+            gres = (
+                f"gpu:{run.gpu_type}:{run.gpu_count}"
+                if run.gpu_type
+                else f"gpu:{run.gpu_count}"
+            )
+
+        job = SlurmJob(
+            job_id=run.job_id,
+            name=run.name,
+            state=run.state,
+            time=_fmt_elapsed(run.elapsed_seconds) or "0:00",
+            work_dir=run.work_dir,
+            gres=gres,
+            submit_time=run.submit_time,
+            num_cpus=run.num_cpus,
+            mem_requested_mb=run.mem_requested_mb,
+        )
+        self.navigator.open_subview(
+            JobDetailView(self.controller, run.profile_name, job, self.navigator)
+        )
 
     def _edit_note(self) -> None:
         run = self.selected_run()

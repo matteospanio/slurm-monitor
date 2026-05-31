@@ -10,6 +10,7 @@ slurm formats still round-trip. This is surfaced as a hint on the screen.
 """
 
 import copy
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QSettings, Qt
@@ -214,9 +215,7 @@ class SettingsView(QWidget):
 
         settings = QSettings("slurmhub", "SlurmHub")
         self.tray_checkbox = QCheckBox("Minimise to system tray on close")
-        self.tray_checkbox.setChecked(
-            settings.value("tray/minimize", False, type=bool)
-        )
+        self.tray_checkbox.setChecked(settings.value("tray/minimize", False, type=bool))
         self.tray_checkbox.toggled.connect(
             lambda on: QSettings("slurmhub", "SlurmHub").setValue("tray/minimize", on)
         )
@@ -278,7 +277,7 @@ class SettingsView(QWidget):
         profile = ProfileConfig(
             name=new_name,
             ssh=SSHConfig(
-                host=self.f_host.text().strip() or "localhost",
+                host=self.f_host.text().strip(),
                 port=self.f_port.value(),
                 username=self.f_username.text().strip(),
                 key_filename=self.f_key.text().strip(),
@@ -322,7 +321,11 @@ class SettingsView(QWidget):
         self.profile_list.setCurrentRow(self.profile_list.count() - 1)
 
     def _remove_profile(self) -> None:
-        name = self.profile_list.currentItem().text() if self.profile_list.currentItem() else None
+        name = (
+            self.profile_list.currentItem().text()
+            if self.profile_list.currentItem()
+            else None
+        )
         if not name or name not in self._working.profiles:
             return
         if len(self._working.profiles) <= 1:
@@ -386,10 +389,39 @@ class SettingsView(QWidget):
         if app is not None:
             apply_theme(app, mode)
 
+    def _validate_profiles(self) -> Optional[str]:
+        for name, profile in self._working.profiles.items():
+            if not profile.ssh.host.strip():
+                return (
+                    f"Profile '{name}' is missing the SSH host. "
+                    "Set Host before saving."
+                )
+
+            key_file = profile.ssh.key_filename.strip()
+            if key_file:
+                key_path = Path(key_file).expanduser()
+                if not key_path.exists():
+                    return (
+                        f"Profile '{name}' references SSH key '{key_file}', "
+                        "but that path does not exist."
+                    )
+                if not key_path.is_file():
+                    return (
+                        f"Profile '{name}' references SSH key '{key_file}', "
+                        "but that path is not a file."
+                    )
+        return None
+
     # ── save ─────────────────────────────────────────────────────────
     def _save(self) -> None:
         self._commit_form()
         self._commit_database()
+        validation_error = self._validate_profiles()
+        if validation_error:
+            QMessageBox.warning(self, "Invalid profile settings", validation_error)
+            self.status.setText("Fix profile validation errors before saving.")
+            return
+
         config = AppConfig(
             profiles=self._working.profiles, database=self._working.database
         )

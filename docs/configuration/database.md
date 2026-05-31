@@ -28,7 +28,7 @@ All settings are app-level (a single shared database across all profiles):
 enabled = true              # set false to disable history capture entirely
 path = ""                   # override the DB location; empty = ~/.config/slurmhub/jobs.db
 retention_days = 0          # 0 = keep everything; N = prune runs older than N days
-capture_utilization = true  # also sample measured GPU%/memory for running jobs
+capture_utilization = true  # also sample measured CPU/GPU% and memory for running jobs
 utilization_interval = 60   # seconds between utilisation samples
 ```
 
@@ -37,7 +37,7 @@ utilization_interval = 60   # seconds between utilisation samples
 | `enabled` | `true` | When `false`, no database is opened and the history screen reports that it's disabled. |
 | `path` | *(config dir)* | Absolute path to the SQLite file. Empty uses `~/.config/slurmhub/jobs.db`. |
 | `retention_days` | `0` | At startup, runs whose last-seen time is older than this many days are pruned. `0` keeps everything. **Favourites are always exempt.** |
-| `capture_utilization` | `true` | When enabled, a slower background pass runs `scontrol`/`sstat`/`nvidia-smi` for running jobs to record measured GPU utilisation and actual memory use. |
+| `capture_utilization` | `true` | When enabled, a slower background pass runs `scontrol`/`sstat`/`nvidia-smi` for running jobs to record measured CPU/GPU utilisation and actual memory use. |
 | `utilization_interval` | `60` | Seconds between utilisation samples (kept slower than the live refresh so it never delays the job table). |
 
 ## What gets captured
@@ -45,8 +45,9 @@ utilization_interval = 60   # seconds between utilisation samples
 - **Every refresh cycle**, each active job's state, elapsed time, and *allocated*
   resources (CPUs, GPUs, requested memory) are recorded as a usage snapshot. Terminal
   jobs (completed/failed/cancelled) are recorded once but not re-snapshotted.
-- **On the utilisation cadence** (if enabled), measured GPU% and actual memory are
-  added for running jobs — this is the source of the "Avg GPU util" figure.
+- **On the utilisation cadence** (if enabled), measured CPU%, measured GPU%, and
+  actual memory are added for running jobs — this is the source of the
+  measured-utilisation figures and per-run usage timeline plots.
 - **Logs**: only the stdout/stderr *paths* are stored; log content is still streamed
   live over SSH on demand.
 

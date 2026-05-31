@@ -116,9 +116,7 @@ def parse_squeue_line(line: str) -> SlurmJob:
 
     work_dir = parts[4] if len(parts) > 4 and parts[4] else None
     gres = parts[5] if len(parts) > 5 and parts[5] else None
-    submit_time = (
-        parts[6] if len(parts) > 6 and parts[6] not in ("", "N/A") else None
-    )
+    submit_time = parts[6] if len(parts) > 6 and parts[6] not in ("", "N/A") else None
     num_cpus = _to_int(parts[7]) if len(parts) > 7 else None
     mem_requested_mb = mem_str_to_mb(parts[8]) if len(parts) > 8 else None
 
@@ -163,6 +161,7 @@ def fetch_squeue_jobs(
     client: SSHClient,
     timeout: int = 10,
     format_string: str = "%i|%j|%T|%M|%Z|%b|%V|%C|%m",
+    include_all: bool = False,
 ) -> list[SlurmJob]:
     """Fetch and parse jobs from squeue on a remote host.
 
@@ -178,7 +177,8 @@ def fetch_squeue_jobs(
         SSHConnectionError: If SSH connection fails
         SSHTimeoutError: If command times out
     """
-    command = f'squeue --me -o "{format_string}" --noheader'
+    scope = "" if include_all else "--me "
+    command = f'squeue {scope}-o "{format_string}" --noheader'
     output = client.execute(command, timeout)
     return parse_squeue_output(output)
 

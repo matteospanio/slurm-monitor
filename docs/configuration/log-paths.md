@@ -52,5 +52,9 @@ log.view_command = "tail -f {log_path}"
 ```
 
 You can substitute `less +F`, `bat --paging=never --follow`, or any other follower.
-The TUI does not currently provide a way to change tail length from the UI — that
-remains the `tail -n 50 -f` default on the client side.
+Both the desktop GUI and the TUI honour `log.view_command`.
+
+When left at the default template (`tail -f {log_path}`), both interfaces still
+stream with `tail -n 50 -f` for convenience. Neither UI currently exposes a
+tail-length control directly in the interface; set a custom `log.view_command`
+if you need a different follower behaviour.

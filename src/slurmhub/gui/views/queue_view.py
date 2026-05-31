@@ -74,6 +74,11 @@ class QueueView(QWidget):
         self.summary.setObjectName("HeaderStatus")
         layout.addWidget(self.summary)
 
+        self.mode_hint = QLabel("")
+        self.mode_hint.setObjectName("HeaderStatus")
+        self.mode_hint.setWordWrap(True)
+        layout.addWidget(self.mode_hint)
+
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self._build_table())
         splitter.addWidget(self._build_detail_panel())
@@ -86,9 +91,16 @@ class QueueView(QWidget):
         bar = QHBoxLayout()
         bar.setSpacing(8)
 
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItems(["My jobs", "Entire cluster queue"])
+        self.scope_combo.setMinimumWidth(170)
+        self.scope_combo.currentIndexChanged.connect(self._on_scope_changed)
+        bar.addWidget(self.scope_combo)
+
         self.state_filter = QComboBox()
         for label, _value in _STATE_FILTERS:
             self.state_filter.addItem(label)
+        self.state_filter.setMinimumWidth(128)
         self.state_filter.currentIndexChanged.connect(self._on_state_filter_changed)
         bar.addWidget(self.state_filter)
 
@@ -100,6 +112,7 @@ class QueueView(QWidget):
 
         self.details_button = QPushButton(button_icon("fa5s.eye"), "Details")
         self.details_button.setEnabled(False)
+        self.details_button.setToolTip("Open the selected job's full detail screen")
         self.details_button.clicked.connect(self._emit_activated)
         bar.addWidget(self.details_button)
 
@@ -108,10 +121,12 @@ class QueueView(QWidget):
         )
         self.cancel_button.setObjectName("Danger")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setToolTip("Select a non-terminal job to cancel it")
         self.cancel_button.clicked.connect(self._cancel_selected)
         bar.addWidget(self.cancel_button)
 
         self.refresh_button = QPushButton(button_icon("fa5s.sync-alt"), "Refresh")
+        self.refresh_button.setToolTip("Fetch live data for the active profile now")
         self.refresh_button.clicked.connect(self.controller.force_refresh_active)
         bar.addWidget(self.refresh_button)
 
@@ -126,19 +141,39 @@ class QueueView(QWidget):
         self.table = QTableView()
         self.table.setModel(self.proxy)
         self.table.setItemDelegateForColumn(2, StateBadgeDelegate(self.table))
-        self.table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        self.table.verticalHeader().setDefaultSectionSize(26)
         self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setMinimumSectionSize(70)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
         self.table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch  # Name column expands
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            6, QHeaderView.ResizeMode.ResizeToContents
         )
         self.table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
         self.table.doubleClicked.connect(self._emit_activated)
@@ -160,15 +195,14 @@ class QueueView(QWidget):
         self.detail.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        self.detail.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-        )
+        self.detail.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         panel_layout.addWidget(self.detail)
         return panel
 
     # ── signals ──────────────────────────────────────────────────────
     def _connect_signals(self) -> None:
         self.controller.jobsUpdated.connect(self._on_jobs_updated)
+        self.controller.connectionChanged.connect(self._on_connection_changed)
         self.controller.activeProfileChanged.connect(self._on_active_profile_changed)
         self.table.selectionModel().currentRowChanged.connect(
             self._on_selection_changed
@@ -186,7 +220,28 @@ class QueueView(QWidget):
             self.search.setText(session.name_filter)
             self.search.blockSignals(False)
             self._select_state_combo(session.state_filter)
+            self._set_scope_combo(session.queue_scope)
         self.reload()
+
+    def _on_scope_changed(self, index: int) -> None:
+        session = self.controller.session()
+        if session is None:
+            return
+        new_scope = "all" if index == 1 else "me"
+        if session.queue_scope == new_scope:
+            return
+        session.queue_scope = new_scope
+        # Force a fresh fetch path when switching scope.
+        session._sacct_last_fetch = 0.0
+        self.controller.force_refresh_active()
+
+    def _on_connection_changed(self, name: str) -> None:
+        if name != self.controller.active_profile:
+            return
+        session = self.controller.session()
+        if session is not None:
+            self._update_summary(session)
+            self._update_detail(self.selected_job())
 
     def _on_state_filter_changed(self, index: int) -> None:
         session = self.controller.session()
@@ -223,31 +278,73 @@ class QueueView(QWidget):
         return self.proxy.data(index, JOB_ROLE)
 
     def _update_summary(self, session) -> None:
-        parts: list[str] = []
+        scope = "Cluster queue" if session.queue_scope == "all" else "My jobs"
+        parts: list[str] = [f"Scope: {scope}"]
         stats = session.queue_stats
         if stats is not None:
             parts.append(
-                f"cluster: {stats.total_running} running · "
-                f"{stats.total_pending} pending · {stats.total_other} other"
+                f"Queue: {stats.total_running} running / "
+                f"{stats.total_pending} pending / {stats.total_other} other"
             )
         cap = session.cluster_capacity
         if cap is not None:
             parts.append(f"CPU {cap.cpu_percentage:.0f}%")
             if cap.gpus_total:
                 parts.append(f"GPU {cap.gpu_percentage:.0f}%")
+        if session.last_updated:
+            parts.append(f"Updated {session.last_updated}")
+        self.summary.setText(
+            "  |  ".join(parts) if parts else "Waiting for first refresh..."
+        )
+
+        if session.error_message:
+            self._set_status_label(
+                self.mode_hint,
+                f"Unable to fetch live data: {session.error_message}",
+                "error",
+            )
+            return
         if session.is_cached:
-            parts.append(f"⤓ cached {session.last_updated} (refreshing…)")
-        elif session.last_updated:
-            parts.append(f"updated {session.last_updated}")
-        self.summary.setText("   •   ".join(parts) if parts else "Loading…")
+            self._set_status_label(
+                self.mode_hint,
+                "Showing cached data while a live refresh runs. "
+                "Job-changing actions are temporarily disabled.",
+                "loading",
+            )
+            return
+        if session.action_in_progress and session.action_verb and session.action_job_id:
+            self._set_status_label(
+                self.mode_hint,
+                f"Applying '{session.action_verb}' to job "
+                f"{session.action_job_id}...",
+                "loading",
+            )
+            return
+        if session.is_loading:
+            self._set_status_label(
+                self.mode_hint,
+                "Refreshing live queue and cluster metrics...",
+                "loading",
+            )
+            return
+        if session.queue_scope == "all":
+            self._set_status_label(
+                self.mode_hint,
+                "Cluster scope enabled: showing all jobs in the queue. "
+                "State-changing actions are disabled in this mode.",
+                "",
+            )
+            return
+        self._set_status_label(self.mode_hint, "", "")
 
     def _update_detail(self, job: Optional[SlurmJob]) -> None:
         session = self.controller.session()
         cached = session is not None and session.is_cached
+        action_busy = session is not None and session.action_in_progress
         self.details_button.setEnabled(job is not None)
-        self.cancel_button.setEnabled(
-            job is not None and job.state not in _TERMINAL_STATES and not cached
-        )
+        cancel_reason = self._cancel_disabled_reason(job, session)
+        self.cancel_button.setEnabled(cancel_reason is None)
+        self.cancel_button.setToolTip(cancel_reason or "Cancel the selected job")
         if job is None:
             self.detail.setText("Select a job to see details.")
             return
@@ -268,14 +365,33 @@ class QueueView(QWidget):
                 f"&nbsp;|&nbsp; Queue rank: {esc(job.queue_rank)} "
                 f"&nbsp;|&nbsp; Priority: {esc(job.priority)}"
             )
+        if cached:
+            lines.append(
+                "<i>Read-only mode: the view is showing cached data until the "
+                "next live refresh completes.</i>"
+            )
+        elif session is not None and session.queue_scope == "all":
+            lines.append(
+                "<i>Cluster queue scope is active; state-changing actions are "
+                "disabled to avoid mutating jobs outside your own queue.</i>"
+            )
+        elif action_busy and session is not None:
+            lines.append(
+                "<i>One job action is currently running. Additional state "
+                "changes are paused until it completes.</i>"
+            )
+        elif job.state in _TERMINAL_STATES:
+            lines.append(
+                "<i>This job is in a terminal state; state-changing actions "
+                "are disabled.</i>"
+            )
         self.detail.setText("<br>".join(lines))
 
     # ── actions ──────────────────────────────────────────────────────
     def _cancel_selected(self) -> None:
         job = self.selected_job()
-        if job is None:
-            return
-        if job.state in _TERMINAL_STATES:
+        reason = self._cancel_disabled_reason(job, self.controller.session())
+        if reason is not None:
             return
         if confirm(
             self,
@@ -302,12 +418,24 @@ class QueueView(QWidget):
             return
         session = self.controller.session()
         cached = session is not None and session.is_cached
+        action_busy = session is not None and session.action_in_progress
+        cluster_scope = session is not None and session.queue_scope == "all"
         # While showing cached data, only read-only actions are offered.
-        active = job.state not in _TERMINAL_STATES and not cached
+        active = (
+            job.state not in _TERMINAL_STATES
+            and not cached
+            and not action_busy
+            and not cluster_scope
+        )
 
         menu = QMenu(self)
         menu.addAction("Details", self._emit_activated)
         menu.addAction("View log", lambda: self.logRequested.emit(self.selected_job()))
+        if not active:
+            reason = self._cancel_disabled_reason(job, session)
+            if reason is not None:
+                disabled = menu.addAction(reason)
+                disabled.setEnabled(False)
         menu.addSeparator()
         if active:
             menu.addAction("Requeue", self._requeue_selected)
@@ -370,3 +498,31 @@ class QueueView(QWidget):
                 self.state_filter.setCurrentIndex(i)
                 self.state_filter.blockSignals(False)
                 return
+
+    def _set_scope_combo(self, scope: str) -> None:
+        idx = 1 if scope == "all" else 0
+        self.scope_combo.blockSignals(True)
+        self.scope_combo.setCurrentIndex(idx)
+        self.scope_combo.blockSignals(False)
+
+    def _cancel_disabled_reason(
+        self, job: Optional[SlurmJob], session
+    ) -> Optional[str]:
+        if job is None:
+            return "Select a job first."
+        if session is not None and session.queue_scope == "all":
+            return "Actions are disabled in whole-cluster scope."
+        if session is not None and session.is_cached:
+            return "Actions are disabled while cached data is shown."
+        if session is not None and session.action_in_progress:
+            return "Wait for the current job action to finish."
+        if job.state in _TERMINAL_STATES:
+            return "This job is already in a terminal state."
+        return None
+
+    @staticmethod
+    def _set_status_label(label: QLabel, text: str, state: str) -> None:
+        label.setText(text)
+        label.setProperty("state", state)
+        label.style().unpolish(label)
+        label.style().polish(label)

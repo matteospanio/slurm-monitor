@@ -21,6 +21,24 @@ for static info, `sstat` for live memory usage, and (for GPU jobs)
   they reflect Slurm's actual file path including any `%j` / `%a` expansion already
   resolved.
 
+## Persisted history fallback
+
+Finished jobs may disappear from `scontrol` quickly on some clusters. When that
+happens, SlurmHub falls back to the local history database for the detail view
+instead of showing an empty/error page.
+
+- Stored run metadata (state, timings, partition, requested CPU/GPU/memory) is shown
+  from the `jobs` table.
+- Stored `stdout` / `stderr` paths are reused when available, so you can still open
+  logs for completed jobs.
+- A native interactive Qt chart (pyqtgraph) is rendered from persisted snapshots
+  (`usage_snapshots`): GPU utilisation (%) and measured CPU utilisation (%) across
+  captured samples, with allocated-CPU context shown on a secondary axis.
+- Detail metadata below the chart is presented in a structured two-column table
+  inside a card, instead of an unstructured text block.
+- A terminal-state snapshot is stored once per run, so completed runs keep at least
+  one persisted usage point for post-mortem inspection.
+
 ## Keybindings
 
 | Key | Action |

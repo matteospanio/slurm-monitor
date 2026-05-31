@@ -140,11 +140,11 @@ SCONTROL_JOBS: dict[str, str] = {
     ),
 }
 
-# sstat --format=MaxRSS -j <id>.batch (running jobs only)
+# sstat --format=MaxRSS,TotalCPU -j <id>.batch (running jobs only)
 SSTAT_OUTPUTS: dict[str, str] = {
-    "421578": "  94327112K",
-    "421579": "  41280088K",
-    "421580": "  60113920K",
+    "421578": "94327112K|2-08:12:40",
+    "421579": "41280088K|06:18:52",
+    "421580": "60113920K|11:40:14",
 }
 
 # srun nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total

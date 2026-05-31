@@ -9,12 +9,31 @@ import click
 from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
 
 
+def _require_tui_dependencies() -> None:
+    try:
+        import rich  # noqa: F401
+        import textual  # noqa: F401
+    except ModuleNotFoundError as exc:
+        missing = exc.name or "textual/rich"
+        raise click.ClickException(
+            "Terminal UI dependencies are not installed "
+            f"(missing: {missing}).\n"
+            "Install one of:\n"
+            "  pip install 'slurmhub[tui]'\n"
+            "  pipx install 'slurmhub[tui]'\n"
+            "  uv tool install 'slurmhub[tui]'\n"
+            "From a source checkout: uv sync --group tui"
+        ) from exc
+
+
 def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     """Launch the interactive wizard, collect profiles, save to ``save_path``.
 
     Returns the populated AppConfig (also written to disk) or None if the
     user cancelled before saving any profile.
     """
+    _require_tui_dependencies()
+
     from textual.app import App, ComposeResult
 
     from slurmhub.tui.widgets.first_run_wizard import (
@@ -37,7 +56,9 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
             self._next_step()
 
         def _next_step(self) -> None:
-            default_name = "default" if not collected else f"cluster{len(collected) + 1}"
+            default_name = (
+                "default" if not collected else f"cluster{len(collected) + 1}"
+            )
             self.push_screen(
                 FirstRunWizardScreen(default_name=default_name),
                 callback=self._after_wizard,
@@ -93,6 +114,7 @@ def _launch(
     ``config_path`` is the file the Settings screen writes back to.
     """
     if use_tui:
+        _require_tui_dependencies()
         from slurmhub.tui.app import SlurmhubApp
 
         SlurmhubApp(app_config, demo=demo, database=database).run()
@@ -113,9 +135,7 @@ def _open_history_database(app_config: AppConfig):
 
         db = open_database(app_config.database)
     except Exception as exc:  # noqa: BLE001 — degrade gracefully
-        click.echo(
-            f"Job history disabled (database error): {exc}", err=True
-        )
+        click.echo(f"Job history disabled (database error): {exc}", err=True)
         return None
 
     retention = app_config.database.retention_days
@@ -229,9 +249,7 @@ def main(
         located_path, found = ConfigLoader.locate(config_path)
         save_path = config_path or located_path
         if not found and config_path is None:
-            click.echo(
-                "No config found. Launching first-run setup…", err=True
-            )
+            click.echo("No config found. Launching first-run setup…", err=True)
             if use_tui:
                 app_config = run_first_run_wizard(located_path)
             else:
@@ -247,9 +265,7 @@ def main(
                     err=True,
                 )
                 sys.exit(1)
-            click.echo(
-                f"Saved configuration to {located_path}.", err=True
-            )
+            click.echo(f"Saved configuration to {located_path}.", err=True)
         else:
             app_config = ConfigLoader.load(config_path)
 

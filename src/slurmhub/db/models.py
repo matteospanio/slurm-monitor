@@ -129,6 +129,7 @@ class UsageSnapshot(Base):
     num_cpus: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mem_requested_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Measured utilization — only populated by the slower utilization pass.
+    cpu_util_avg: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gpu_util_avg: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mem_used_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

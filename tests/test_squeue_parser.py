@@ -187,6 +187,12 @@ class TestFetchSqueueJobs:
         cmd = mock_ssh_client.execute.call_args[0][0]
         assert 'squeue --me -o "%i|%j|%T|%M|%Z|%b|%V|%C|%m" --noheader' == cmd
 
+    def test_fetch_jobs_cluster_scope_command(self, mock_ssh_client):
+        mock_ssh_client.execute.return_value = ""
+        fetch_squeue_jobs(mock_ssh_client, include_all=True)
+        cmd = mock_ssh_client.execute.call_args[0][0]
+        assert 'squeue -o "%i|%j|%T|%M|%Z|%b|%V|%C|%m" --noheader' == cmd
+
     def test_fetch_jobs_custom_timeout(self, mock_ssh_client):
         mock_ssh_client.execute.return_value = ""
         fetch_squeue_jobs(mock_ssh_client, timeout=30)
@@ -203,9 +209,7 @@ class TestFetchSqueueJobs:
         assert fetch_squeue_jobs(mock_ssh_client) == []
 
     def test_fetch_jobs_returns_json_structure(self, mock_ssh_client):
-        mock_ssh_client.execute.return_value = (
-            "12345|job1|RUNNING|1:23:45|/home/user"
-        )
+        mock_ssh_client.execute.return_value = "12345|job1|RUNNING|1:23:45|/home/user"
         jobs = fetch_squeue_jobs(mock_ssh_client)
         jobs_dict = jobs_to_dict_list(jobs)
         assert isinstance(jobs_dict, list)
