@@ -43,6 +43,24 @@ class SlurmConfig:
 
 
 @dataclass
+class DatabaseConfig:
+    """Job-history database settings (app-level: a single shared database).
+
+    ``enabled`` defaults to True so history is captured out of the box; set
+    ``[database] enabled = false`` to turn it off. ``path`` overrides the
+    default ``<config-dir>/jobs.db`` location. ``retention_days = 0`` keeps
+    everything (favourites are never pruned regardless). Measured-utilization
+    capture is on by default and runs on its own slower cadence.
+    """
+
+    enabled: bool = True
+    path: str = ""
+    retention_days: int = 0
+    capture_utilization: bool = True
+    utilization_interval: int = 60
+
+
+@dataclass
 class ProfileConfig:
     """Configuration for a single cluster/project profile."""
 
@@ -60,6 +78,10 @@ class AppConfig:
     """Top-level application configuration with multiple profiles."""
 
     profiles: dict[str, ProfileConfig] = field(default_factory=dict)
+    # App-level (not per-profile): a single shared history database. The
+    # default_factory guarantees every construction site (TOML, legacy JSON,
+    # no-config fallback, CLI-built configs) gets sane defaults.
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
 
     def get_profile(self, name: str) -> ProfileConfig:
         """Get a profile by name.
@@ -125,6 +147,25 @@ def _merge_slurm(defaults: dict, overrides: dict) -> SlurmConfig:
     )
 
 
+def _merge_database(data: dict) -> DatabaseConfig:
+    """Build DatabaseConfig from a config dict's optional [database] section.
+
+    Tolerates a missing or partial section (per-field ``.get``), so existing
+    users without a ``[database]`` block keep working with defaults.
+    """
+    db = data.get("database", {})
+    return DatabaseConfig(
+        enabled=db.get("enabled", True),
+        path=db.get("path", ""),
+        # Accept ``max_age_days`` / ``max_age`` as friendly aliases.
+        retention_days=db.get(
+            "retention_days", db.get("max_age_days", db.get("max_age", 0))
+        ),
+        capture_utilization=db.get("capture_utilization", True),
+        utilization_interval=db.get("utilization_interval", 60),
+    )
+
+
 def _parse_profile(
     name: str, profile_data: dict, defaults: dict
 ) -> ProfileConfig:
@@ -184,7 +225,7 @@ def _from_toml_dict(data: dict) -> AppConfig:
                 profile_data["ssh"] = ssh
             profiles[name] = _parse_profile(name, profile_data, defaults)
 
-    return AppConfig(profiles=profiles)
+    return AppConfig(profiles=profiles, database=_merge_database(data))
 
 
 def _from_legacy_json(data: dict) -> AppConfig:
@@ -371,6 +412,29 @@ class ConfigLoader:
                 )
             lines.append("")
 
+        # Round-trip the [database] section so hand-edited settings aren't
+        # silently dropped on re-save. Only emit fields that differ from the
+        # defaults to keep the written file minimal.
+        db = config.database
+        defaults_db = DatabaseConfig()
+        db_lines: list[str] = []
+        if db.enabled != defaults_db.enabled:
+            db_lines.append(f"enabled = {str(db.enabled).lower()}")
+        if db.path != defaults_db.path:
+            db_lines.append(f'path = "{db.path}"')
+        if db.retention_days != defaults_db.retention_days:
+            db_lines.append(f"retention_days = {db.retention_days}")
+        if db.capture_utilization != defaults_db.capture_utilization:
+            db_lines.append(
+                f"capture_utilization = {str(db.capture_utilization).lower()}"
+            )
+        if db.utilization_interval != defaults_db.utilization_interval:
+            db_lines.append(f"utilization_interval = {db.utilization_interval}")
+        if db_lines:
+            lines.append("[database]")
+            lines.extend(db_lines)
+            lines.append("")
+
         with open(path, "w") as f:
             f.write("\n".join(lines))
 
@@ -378,3 +442,8 @@ class ConfigLoader:
     def get_default_config_path() -> Path:
         """Get the default config file path."""
         return ConfigLoader.DEFAULT_CONFIG_PATHS[0]
+
+    @staticmethod
+    def get_config_dir() -> Path:
+        """Return the directory holding slurmhub's config (and the history DB)."""
+        return ConfigLoader.DEFAULT_CONFIG_PATHS[0].parent

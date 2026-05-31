@@ -11,14 +11,14 @@ DEMO_HOST = "demo-cluster.example.org"
 DEMO_USERNAME = "demo-user"
 
 # ── squeue / sacct ───────────────────────────────────────────────────
-# Format: %i|%j|%T|%M|%Z|%b
+# Format: %i|%j|%T|%M|%Z|%b|%V|%C|%m  (id|name|state|time|workdir|gres|submit|cpus|mem)
 SQUEUE_OUTPUT = "\n".join(
     [
-        "421578|train_resnet50|RUNNING|1-04:32:11|/home/demo-user/projects/vision-models|gpu:l40s:4",
-        "421579|eval_transformer|RUNNING|03:14:22|/home/demo-user/projects/nlp-bench|gpu:a100:2",
-        "421580|preprocess_data|RUNNING|00:42:08|/scratch/demo-user/datasets/imagenet|(null)",
-        "421612|finetune_llama|PENDING|0:00|/home/demo-user/projects/llama-ft|gpu:a100:8",
-        "421613|hyperparam_sweep|PENDING|0:00|/home/demo-user/projects/hpo|gpu:l40s:1",
+        "421578|train_resnet50|RUNNING|1-04:32:11|/home/demo-user/projects/vision-models|gpu:l40s:4|2026-05-21T03:08:11|16|128G",
+        "421579|eval_transformer|RUNNING|03:14:22|/home/demo-user/projects/nlp-bench|gpu:a100:2|2026-05-22T04:55:33|8|64G",
+        "421580|preprocess_data|RUNNING|00:42:08|/scratch/demo-user/datasets/imagenet|(null)|2026-05-22T08:11:41|32|96G",
+        "421612|finetune_llama|PENDING|0:00|/home/demo-user/projects/llama-ft|gpu:a100:8|2026-05-22T08:14:03|32|512G",
+        "421613|hyperparam_sweep|PENDING|0:00|/home/demo-user/projects/hpo|gpu:l40s:1|2026-05-22T09:02:45|4|24G",
     ]
 )
 
@@ -48,13 +48,14 @@ SQUEUE_QUEUE_RANKS = "\n".join(
     ]
 )
 
-# sacct -X --format=JobID,JobName,State,Elapsed,WorkDir --units=M -n
+# sacct -X --format=JobID,JobName,State,Elapsed,Submit,NCPUS,ReqMem,WorkDir --units=M -n -P
+# Pipe-delimited: JobID|JobName|State|Elapsed|Submit|NCPUS|ReqMem|WorkDir
 SACCT_OUTPUT = "\n".join(
     [
-        "421421 train_resnet50 COMPLETED 06:12:44 /home/demo-user/projects/vision-models",
-        "421502 eval_transformer COMPLETED 01:55:18 /home/demo-user/projects/nlp-bench",
-        "421561 cuda_smoke_test FAILED 00:00:34 /home/demo-user/projects/scratch",
-        "421577 preprocess_data CANCELLED 00:08:11 /scratch/demo-user/datasets/imagenet",
+        "421421|train_resnet50|COMPLETED|06:12:44|2026-05-22T07:01:00|16|128G|/home/demo-user/projects/vision-models",
+        "421502|eval_transformer|COMPLETED|01:55:18|2026-05-23T11:20:00|8|64G|/home/demo-user/projects/nlp-bench",
+        "421561|cuda_smoke_test|FAILED|00:00:34|2026-05-24T09:15:00|4|24G|/home/demo-user/projects/scratch",
+        "421577|preprocess_data|CANCELLED|00:08:11|2026-05-25T14:02:00|32|96G|/scratch/demo-user/datasets/imagenet",
     ]
 )
 

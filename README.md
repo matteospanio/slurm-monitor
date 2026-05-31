@@ -31,6 +31,11 @@ built with [Textual](https://textual.textualize.io/).
   per-node table fed by `sinfo`.
 - **Multi-cluster tabs** — configure several clusters and switch with `h` / `l`;
   filter, search, and sort state is remembered per tab.
+- **Persistent job history & analytics** (`H`) — a local SQLite database records every
+  run, its resource usage over time, and your favourites; browse, filter, and see
+  GPU / CPU / memory-hour aggregates. On by default; `--demo` ships a seeded history.
+- **Favourites & notes** — star important runs (`f`) and annotate them (`n`); starred
+  runs are exempt from history retention.
 - **Vim-style navigation** throughout.
 - **OSC 52 yank** — copy job IDs, paths, and log lines to the system clipboard
   through SSH, no `xclip` / `pbcopy` required.

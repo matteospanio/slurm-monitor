@@ -510,3 +510,18 @@ class TestDetailPanelToggle:
             detail = app.query_one("#detail-clusterA", JobDetail)
             await pilot.press("shift+d")
             assert detail.display is False
+
+
+class TestHistoryBinding:
+    """The H key + action are registered on the app."""
+
+    def test_history_binding_registered(self):
+        keys = {b[0] for b in SlurmhubApp.BINDINGS}
+        assert "H,shift+h" in keys
+
+    def test_action_view_history_exists(self):
+        assert hasattr(SlurmhubApp, "action_view_history")
+
+    def test_repository_none_without_database(self):
+        app = SlurmhubApp(config=_single_profile_config(), database=None)
+        assert app.repository is None

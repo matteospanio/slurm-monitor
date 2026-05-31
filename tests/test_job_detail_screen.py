@@ -60,3 +60,46 @@ class TestJobDetailScreen:
         screen.details = JobDetails(stdout_path="", stderr_path="")
         assert screen._get_log_path("stdout") is None
         assert screen._get_log_path("stderr") is None
+
+
+class TestJobDetailScreenFavourites:
+    def _db(self):
+        from slurmhub.db.engine import Database, _run_migrations, make_engine
+
+        engine = make_engine("sqlite://", in_memory=True)
+        _run_migrations(engine)
+        return Database(engine)
+
+    def test_defaults_to_no_persistence(self, mock_job, mock_ssh_client):
+        screen = JobDetailScreen(mock_job, mock_ssh_client)
+        assert screen.repository is None
+        assert screen.database is None
+        assert screen._favourite is False
+
+    def test_has_favourite_and_note_bindings(self):
+        keys = {b.key for b in JobDetailScreen.BINDINGS}
+        assert "f" in keys
+        assert "n" in keys
+
+    def test_submit_time_prefers_details(self, mock_job, mock_ssh_client):
+        screen = JobDetailScreen(mock_job, mock_ssh_client)
+        screen.details = JobDetails(submit_time="2026-01-01T00:00:00")
+        assert screen._submit_time() == "2026-01-01T00:00:00"
+
+    def test_load_favourite_state_reads_repository(self, mock_job, mock_ssh_client):
+        from slurmhub.db.repository import Repository
+
+        db = self._db()
+        repo = Repository()
+        mock_job.submit_time = "2026-01-01T00:00:00"
+        with db.session() as s:
+            pk = repo.upsert_job(s, "p1", mock_job)
+            repo.set_favourite(s, pk, True, note="hi")
+        screen = JobDetailScreen(
+            mock_job, mock_ssh_client, repository=repo, database=db,
+            profile_name="p1",
+        )
+        screen._load_favourite_state()
+        assert screen._favourite is True
+        assert screen._note == "hi"
+        db.close()

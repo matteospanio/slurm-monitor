@@ -1,6 +1,6 @@
 """Full-screen job detail view with scontrol stats and log access."""
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -14,6 +14,9 @@ from slurmhub.squeue_parser import SlurmJob
 from slurmhub.ssh_wrapper import SSHClient
 from slurmhub.widgets._bars import render_bar as _render_bar
 from slurmhub.widgets.log_viewer import LogScreen
+
+if TYPE_CHECKING:
+    from slurmhub.db import Database, Repository
 
 _SEPARATOR = "\u2500" * 40
 
@@ -37,6 +40,8 @@ class JobDetailScreen(Screen):
         Binding("v", "view_script", "Batch script"),
         Binding("c", "cancel_job", "scancel"),
         Binding("y", "yank", "Copy"),
+        Binding("f", "toggle_favourite", "★ Favourite"),
+        Binding("n", "edit_note", "Note"),
         Binding("question_mark", "help", "Help"),
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
@@ -67,6 +72,9 @@ class JobDetailScreen(Screen):
         job: SlurmJob,
         ssh_client: SSHClient,
         ssh_timeout: int = 10,
+        repository: "Optional[Repository]" = None,
+        database: "Optional[Database]" = None,
+        profile_name: str = "",
     ):
         super().__init__()
         self.job = job
@@ -75,6 +83,12 @@ class JobDetailScreen(Screen):
         self.details: Optional[JobDetails] = None
         # Cycle index for the `y` (yank) action — increments each time.
         self._yank_idx: int = 0
+        # Persistence (None when history is disabled).
+        self.repository = repository
+        self.database = database
+        self.profile_name = profile_name
+        self._favourite = False
+        self._note = ""
 
     def compose(self) -> ComposeResult:
         yield DetailHeader(f" Job {self.job.job_id}: {self.job.name}")
@@ -99,13 +113,16 @@ class JobDetailScreen(Screen):
         from textual.worker import WorkerState
 
         # Only react to the detail-fetch worker. Other workers
-        # (e.g. detail-scancel-*) report their own results via notify.
+        # (e.g. detail-scancel-*, detail-fav-*) report their own results.
         worker_name = event.worker.name or ""
-        if worker_name.startswith("detail-scancel-"):
+        if worker_name.startswith("detail-scancel-") or worker_name.startswith(
+            "detail-fav-"
+        ):
             return
 
         if event.state == WorkerState.SUCCESS:
             self.details = event.worker.result
+            self._load_favourite_state()
             self._render_details()
         elif event.state == WorkerState.ERROR:
             body = self.query_one("#detail-body", DetailSection)
@@ -133,6 +150,12 @@ class JobDetailScreen(Screen):
         }
         state_color = state_colors.get(job.state, "white")
         text.append(job.state, style=f"bold {state_color}")
+
+        if self._favourite:
+            text.append("\nFavourite: ", style="dim")
+            text.append("★", style="bold yellow")
+            if self._note:
+                text.append(f"  {self._note}", style="italic")
 
         if d:
             # Time section
@@ -228,6 +251,11 @@ class JobDetailScreen(Screen):
         text.append(" for stdout, ", style="dim")
         text.append("e", style="bold")
         text.append(" for stderr, ", style="dim")
+        if self.repository is not None:
+            text.append("f", style="bold")
+            text.append(" to favourite, ", style="dim")
+            text.append("n", style="bold")
+            text.append(" for note, ", style="dim")
         text.append("Esc", style="bold")
         text.append(" to go back", style="dim")
 
@@ -261,6 +289,111 @@ class JobDetailScreen(Screen):
         from slurmhub.widgets.help_screen import HelpScreen
 
         self.app.push_screen(HelpScreen(context="detail"))
+
+    # ── Favourites ──────────────────────────────────────────────────────
+
+    def _submit_time(self) -> str:
+        """Best-known submit time for this run's natural key."""
+        if self.details and self.details.submit_time:
+            return self.details.submit_time
+        return self.job.submit_time or ""
+
+    def _load_favourite_state(self) -> None:
+        """Refresh the cached favourite flag/note (cheap WAL read)."""
+        if self.repository is None or self.database is None:
+            return
+        try:
+            with self.database.session() as session:
+                pk = self.repository.get_job_pk(
+                    session, self.profile_name, self.job.job_id, self._submit_time()
+                )
+                if pk is not None:
+                    self._favourite, self._note = self.repository.favourite_state(
+                        session, pk
+                    )
+        except Exception:
+            pass
+
+    def _persistence_ready(self) -> bool:
+        if self.repository is None or self.database is None:
+            self.notify(
+                "Job history is disabled — enable [database] in your config",
+                severity="warning",
+                timeout=4,
+            )
+            return False
+        if self.details is None:
+            self.notify("Job details still loading…", severity="warning", timeout=3)
+            return False
+        return True
+
+    def action_toggle_favourite(self) -> None:
+        """Star or unstar this run (write happens on a worker thread)."""
+        if not self._persistence_ready():
+            return
+        target = not self._favourite
+        submit = self._submit_time()
+
+        def _run() -> None:
+            try:
+                with self.database.session() as session:
+                    pk = self.repository.upsert_job(
+                        session, self.profile_name, self.job, self.details
+                    )
+                    self.repository.set_favourite(session, pk, target)
+            except Exception as exc:
+                self.app.call_from_thread(
+                    self.notify, f"Favourite failed: {exc}", severity="error", timeout=4
+                )
+                return
+            self.app.call_from_thread(self._apply_favourite, target, None)
+
+        self.run_worker(_run, thread=True, name=f"detail-fav-{self.job.job_id}")
+
+    def action_edit_note(self) -> None:
+        """Open the note editor for this run."""
+        if not self._persistence_ready():
+            return
+        from slurmhub.widgets.note_input_screen import NoteInputScreen
+
+        self.app.push_screen(
+            NoteInputScreen(self.job.job_id, initial=self._note),
+            callback=self._on_note_entered,
+        )
+
+    def _on_note_entered(self, note: Optional[str]) -> None:
+        if note is None:  # cancelled
+            return
+        submit = self._submit_time()
+
+        def _run() -> None:
+            try:
+                with self.database.session() as session:
+                    pk = self.repository.upsert_job(
+                        session, self.profile_name, self.job, self.details
+                    )
+                    self.repository.set_note(session, pk, note)
+            except Exception as exc:
+                self.app.call_from_thread(
+                    self.notify, f"Note failed: {exc}", severity="error", timeout=4
+                )
+                return
+            # Setting a note implicitly favourites the run.
+            self.app.call_from_thread(self._apply_favourite, True, note)
+
+        self.run_worker(_run, thread=True, name=f"detail-fav-{self.job.job_id}")
+
+    def _apply_favourite(self, favourite: bool, note: Optional[str]) -> None:
+        """Update cached state + UI after a favourite/note write (main thread)."""
+        self._favourite = favourite
+        if note is not None:
+            self._note = note
+        elif not favourite:
+            self._note = ""
+        self._render_details()
+        self.notify(
+            "★ Favourited" if favourite else "Removed from favourites", timeout=2
+        )
 
     def _yank_targets(self) -> list[tuple[str, str]]:
         """Build the list of (label, value) yank targets for this job.

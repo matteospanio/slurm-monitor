@@ -79,6 +79,36 @@ def run_first_run_wizard(save_path: Path) -> Optional[AppConfig]:
     return config
 
 
+def _open_history_database(app_config: AppConfig):
+    """Open + migrate + prune the history database, degrading to None on error.
+
+    Persistence must never block the app from launching, so any failure here is
+    reported and swallowed ("monitoring still works, history is off").
+    """
+    try:
+        from slurmhub.db import open_database
+
+        db = open_database(app_config.database)
+    except Exception as exc:  # noqa: BLE001 — degrade gracefully
+        click.echo(
+            f"Job history disabled (database error): {exc}", err=True
+        )
+        return None
+
+    retention = app_config.database.retention_days
+    if db is not None and retention > 0:
+        try:
+            from slurmhub.db import Repository
+            from slurmhub.db.models import utcnow
+
+            with db.session() as session:
+                Repository().prune(session, retention, utcnow())
+        except Exception as exc:  # noqa: BLE001 — non-fatal
+            click.echo(f"History retention prune failed: {exc}", err=True)
+
+    return db
+
+
 @click.command()
 @click.option(
     "--config",
@@ -130,12 +160,17 @@ def main(
         from slurmhub.config import SSHConfig
         from slurmhub.demo_data import DEMO_HOST, DEMO_USERNAME
 
+        from slurmhub.db import open_demo_database
+
         profile = _ProfileConfig(
             name="demo",
             ssh=SSHConfig(host=DEMO_HOST, username=DEMO_USERNAME),
         )
         app_config = AppConfig(profiles={"demo": profile})
-        app = SlurmhubApp(app_config, demo=True)
+        # Throwaway in-memory database, seeded with sample history. Never
+        # touches ~/.config.
+        database = open_demo_database()
+        app = SlurmhubApp(app_config, demo=True, database=database)
         app.run()
         return
 
@@ -184,5 +219,6 @@ def main(
             raise click.ClickException(str(e)) from e
         app_config = AppConfig(profiles={profile_name: profile})
 
-    app = SlurmhubApp(app_config)
+    database = _open_history_database(app_config)
+    app = SlurmhubApp(app_config, database=database)
     app.run()

@@ -23,12 +23,25 @@ class TestHelpScreenContent:
         assert screen.context == "main"
 
     def test_each_context_has_at_least_one_section(self):
-        for ctx in ("main", "detail", "dashboard", "log"):
+        for ctx in ("main", "detail", "dashboard", "log", "history"):
             screen = HelpScreen(context=ctx)
             body = str(screen._render_body())
             assert "Esc" in body or "q" in body or "/" in body, (
                 f"context={ctx}: expected at least one keybinding in the body"
             )
+
+    def test_history_context_lists_favourite_and_view_keys(self):
+        body = str(HelpScreen(context="history")._render_body())
+        for key in ("a", "p", "t", "F", "f", "n"):
+            assert key in body
+
+    def test_main_context_mentions_history_key(self):
+        body = str(HelpScreen(context="main")._render_body())
+        assert "H" in body
+
+    def test_detail_context_mentions_favourite_keys(self):
+        body = str(HelpScreen(context="detail")._render_body())
+        assert "favourite" in body.lower()
 
 
 class TestHelpScreenWiring:

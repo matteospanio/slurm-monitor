@@ -11,6 +11,8 @@ from textual.widgets import Footer, Header, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState
 
 from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
+from slurmhub.db import Database, Repository
+from slurmhub.db.models import utcnow
 from slurmhub.job_aggregator import (
     JobAggregator,
     filter_jobs_by_state,
@@ -128,6 +130,8 @@ class SlurmhubApp(App):
         ("l", "next_tab", "Next tab"),
         ("enter", "view_job", "Details"),  # fallback when table not focused
         ("d", "view_dashboard", "Dashboard"),
+        # Real terminals send a literal "H" for Shift+H; bind both forms.
+        ("H,shift+h", "view_history", "History"),
         # Real terminals send a literal "D" for Shift+D; bind both forms.
         ("D,shift+d", "toggle_detail_panel", "Toggle detail panel"),
         ("slash", "toggle_filter", "Filter"),
@@ -141,10 +145,19 @@ class SlurmhubApp(App):
         ("c", "cancel_job", "scancel"),
     ]
 
-    def __init__(self, config: Optional[AppConfig] = None, demo: bool = False):
+    def __init__(
+        self,
+        config: Optional[AppConfig] = None,
+        demo: bool = False,
+        database: Optional[Database] = None,
+    ):
         super().__init__()
         self.config = config or ConfigLoader.load()
         self.demo = demo
+        # Persistence layer. ``database`` is None when disabled, in which case
+        # every history/favourite affordance no-ops with a notification.
+        self.database = database
+        self.repository = Repository() if database is not None else None
         self._profile_tabs: dict[str, ProfileTab] = {}
 
         for name, profile in self.config.profiles.items():
@@ -187,6 +200,20 @@ class SlurmhubApp(App):
                 tab.profile.refresh_interval,
                 lambda n=name: self._refresh_profile(n),
             )
+
+        # Measured-utilization capture runs on its own slower cadence so the
+        # extra scontrol/sstat/nvidia-smi calls never delay the fast refresh.
+        db_cfg = self.config.database
+        if (
+            self.database is not None
+            and db_cfg.capture_utilization
+            and db_cfg.utilization_interval > 0
+        ):
+            for name in self._profile_tabs:
+                self.set_interval(
+                    db_cfg.utilization_interval,
+                    lambda n=name: self._capture_utilization(n),
+                )
 
         # Initial refresh for all profiles
         for name in self._profile_tabs:
@@ -310,6 +337,18 @@ class SlurmhubApp(App):
             except Exception as e:
                 partial_errors["sinfo"] = str(e)
 
+            # Persist this cycle's jobs + a usage snapshot for the active ones.
+            # Runs on the worker thread (off the UI thread); any DB failure is
+            # isolated as a partial error and never breaks live monitoring.
+            if self.database is not None and self.repository is not None:
+                try:
+                    with self.database.session() as session:
+                        self.repository.capture_refresh(
+                            session, profile_name, merged, utcnow()
+                        )
+                except Exception as e:
+                    partial_errors["db"] = str(e)
+
             return FetchResult(
                 profile_name=profile_name,
                 jobs=merged,
@@ -323,6 +362,54 @@ class SlurmhubApp(App):
 
         except (SSHConnectionError, SSHTimeoutError) as e:
             return FetchResult(profile_name=profile_name, error=e)
+
+    def _capture_utilization(self, profile_name: str) -> None:
+        """Spawn a slow-cadence worker to record measured utilization."""
+        if self.database is None or self.repository is None:
+            return
+        tab = self._profile_tabs.get(profile_name)
+        if tab is None or not tab.jobs:
+            return
+        self.run_worker(
+            lambda t=tab, n=profile_name: self._capture_utilization_work(t, n),
+            name=f"util-{profile_name}",
+            thread=True,
+        )
+
+    def _capture_utilization_work(
+        self, tab: ProfileTab, profile_name: str
+    ) -> None:
+        """Fetch per-job scontrol/sstat/GPU stats and store util snapshots.
+
+        Best-effort: any failure is swallowed so live monitoring is never
+        disrupted. Runs entirely on a worker thread.
+        """
+        if self.database is None or self.repository is None:
+            return
+        from slurmhub.scontrol_parser import fetch_job_details
+
+        running = [j for j in tab.jobs if j.state == "RUNNING"]
+        if not running:
+            return
+        captured = utcnow()
+        try:
+            with self.database.session() as session:
+                for job in running:
+                    try:
+                        details = fetch_job_details(
+                            tab.ssh_client, job.job_id, tab.profile.ssh_timeout
+                        )
+                    except Exception:
+                        details = None
+                    pk = self.repository.upsert_job(
+                        session, profile_name, job, details
+                    )
+                    self.repository.record_snapshot(
+                        session, pk, job, captured, details
+                    )
+                session.commit()
+        except Exception:
+            pass
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker_name = event.worker.name or ""
@@ -671,6 +758,30 @@ class SlurmhubApp(App):
             )
         )
 
+    def action_view_history(self) -> None:
+        """Open the job-history & analytics screen for the active profile."""
+        if self.database is None or self.repository is None:
+            self.notify(
+                "Job history is disabled — enable [database] in your config",
+                severity="warning",
+                timeout=4,
+            )
+            return
+        from slurmhub.widgets.history_screen import HistoryScreen
+
+        name = self._get_active_profile_name()
+        tab = self._profile_tabs.get(name)
+        self.push_screen(
+            HistoryScreen(
+                database=self.database,
+                repository=self.repository,
+                profile_name=name,
+                profile_names=list(self._profile_tabs.keys()),
+                ssh_client=tab.ssh_client if tab else None,
+                ssh_timeout=tab.profile.ssh_timeout if tab else 10,
+            )
+        )
+
     def action_view_job(self) -> None:
         """Open the detail screen for the selected job."""
         name = self._get_active_profile_name()
@@ -700,7 +811,14 @@ class SlurmhubApp(App):
             return
 
         self.push_screen(
-            JobDetailScreen(selected_job, tab.ssh_client, tab.profile.ssh_timeout)
+            JobDetailScreen(
+                selected_job,
+                tab.ssh_client,
+                tab.profile.ssh_timeout,
+                repository=self.repository,
+                database=self.database,
+                profile_name=name,
+            )
         )
 
     # ── Filter actions ───────────────────────────────────────────────
@@ -868,6 +986,8 @@ class SlurmhubApp(App):
         self._update_display(self._get_active_profile_name())
 
     def on_unmount(self) -> None:
-        """Clean up SSH connections on exit."""
+        """Clean up SSH connections and the database handle on exit."""
         for tab in self._profile_tabs.values():
             tab.close()
+        if self.database is not None:
+            self.database.close()

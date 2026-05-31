@@ -185,7 +185,7 @@ class TestFetchSqueueJobs:
         mock_ssh_client.execute.return_value = ""
         fetch_squeue_jobs(mock_ssh_client)
         cmd = mock_ssh_client.execute.call_args[0][0]
-        assert 'squeue --me -o "%i|%j|%T|%M|%Z|%b" --noheader' == cmd
+        assert 'squeue --me -o "%i|%j|%T|%M|%Z|%b|%V|%C|%m" --noheader' == cmd
 
     def test_fetch_jobs_custom_timeout(self, mock_ssh_client):
         mock_ssh_client.execute.return_value = ""

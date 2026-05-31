@@ -1,6 +1,6 @@
 [project]
 name = "slurmhub"
-version = "1.0.0"
+version = "1.1.0"
 description = "A terminal UI for monitoring Slurm jobs in real-time over SSH"
 readme = "README.md"
 authors = [
@@ -8,9 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.13",
     "click>=8.1",
     "paramiko>=3.5",
     "rich>=14.3.1",
+    "sqlalchemy>=2.0",
     "textual>=7.4.0",
 ]
 
