@@ -84,11 +84,13 @@ def _launch(
     demo: bool,
     database,
     use_tui: bool,
+    config_path: Optional[Path] = None,
 ) -> None:
     """Launch the chosen interface against the given config + database.
 
     The GUI is the default; ``use_tui`` opts back into the Textual TUI (handy
     for headless/SSH-only sessions). Both share the same data + history layer.
+    ``config_path`` is the file the Settings screen writes back to.
     """
     if use_tui:
         from slurmhub.app import SlurmhubApp
@@ -97,7 +99,7 @@ def _launch(
     else:
         from slurmhub.qt.app import run_gui
 
-        run_gui(app_config, demo=demo, database=database)
+        run_gui(app_config, demo=demo, database=database, config_path=config_path)
 
 
 def _open_history_database(app_config: AppConfig):
@@ -211,6 +213,9 @@ def main(
         _launch(app_config, demo=True, database=database, use_tui=use_tui)
         return
 
+    # The Settings screen writes back to this path.
+    save_path = config_path
+
     # When the user supplied --host or --config, skip the wizard entirely:
     # they are explicitly telling us how to connect.
     if host:
@@ -222,11 +227,19 @@ def main(
         profile_name = None
     else:
         located_path, found = ConfigLoader.locate(config_path)
+        save_path = config_path or located_path
         if not found and config_path is None:
             click.echo(
-                "No config found. Launching first-run setup wizard…", err=True
+                "No config found. Launching first-run setup…", err=True
             )
-            app_config = run_first_run_wizard(located_path)
+            if use_tui:
+                app_config = run_first_run_wizard(located_path)
+            else:
+                from slurmhub.qt.dialogs.first_run_wizard import (
+                    run_first_run_wizard_qt,
+                )
+
+                app_config = run_first_run_wizard_qt(located_path)
             if app_config is None:
                 click.echo(
                     f"Setup cancelled. Edit {located_path} manually or "
@@ -257,4 +270,10 @@ def main(
         app_config = AppConfig(profiles={profile_name: profile})
 
     database = _open_history_database(app_config)
-    _launch(app_config, demo=False, database=database, use_tui=use_tui)
+    _launch(
+        app_config,
+        demo=False,
+        database=database,
+        use_tui=use_tui,
+        config_path=save_path,
+    )

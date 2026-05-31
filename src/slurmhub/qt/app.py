@@ -1,5 +1,6 @@
 """QApplication bootstrap for the slurmhub desktop GUI."""
 
+from pathlib import Path
 from typing import Optional
 
 from slurmhub.config import AppConfig
@@ -10,6 +11,7 @@ def run_gui(
     app_config: AppConfig,
     demo: bool = False,
     database: Optional[Database] = None,
+    config_path: Optional[Path] = None,
 ) -> int:
     """Launch the Qt GUI and block until the window is closed.
 
@@ -30,7 +32,9 @@ def run_gui(
 
     apply_theme(app, load_theme_preference())
 
-    controller = AppController(app_config, demo=demo, database=database)
+    controller = AppController(
+        app_config, demo=demo, database=database, config_path=config_path
+    )
     window = MainWindow(controller)
     window.show()
     controller.start()

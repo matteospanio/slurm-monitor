@@ -101,10 +101,30 @@ class TestCliWizardWiring:
         )
         with patch("slurmhub.app.SlurmhubApp") as ctor:
             runner = CliRunner()
-            result = runner.invoke(cli.main, [])
+            result = runner.invoke(cli.main, ["--tui"])
             assert result.exit_code != 0
             ctor.assert_not_called()
             assert "Setup cancelled" in result.output or "Setup cancelled" in result.stderr_bytes.decode("utf-8", errors="replace")
+
+    def test_gui_first_run_invokes_qt_wizard(self, monkeypatch, tmp_path):
+        """GUI first-run uses the Qt wizard, then launches the GUI."""
+        target = tmp_path / "config.toml"
+        monkeypatch.setattr(
+            ConfigLoader, "locate", staticmethod(lambda p: (target, False))
+        )
+        config = self._make_config()
+        wizard = MagicMock(return_value=config)
+        monkeypatch.setattr(
+            "slurmhub.qt.dialogs.first_run_wizard.run_first_run_wizard_qt", wizard
+        )
+        gui = MagicMock()
+        with patch("slurmhub.qt.app.run_gui", gui), patch("slurmhub.app.SlurmhubApp") as tui:
+            runner = CliRunner()
+            result = runner.invoke(cli.main, [])
+            assert result.exit_code == 0, result.output
+            wizard.assert_called_once_with(target)
+            gui.assert_called_once()
+            tui.assert_not_called()
 
     def test_existing_config_skips_wizard(self, monkeypatch, tmp_path):
         target = tmp_path / "config.toml"

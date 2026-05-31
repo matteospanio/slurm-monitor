@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cluster Status screen** — CPU/GPU/memory utilisation bars (green/yellow/red by
   threshold), a node-state summary, and partition + node tables, all fed by
   `fetch_sinfo` and refreshed on the cluster cadence.
+- **Settings screen** — a GUI proxy for the on-disk config: add/edit/remove cluster
+  profiles (SSH, log, slurm, intervals), database options (history on/off, path,
+  retention, utilisation capture) with a "Clean up history now" button, and an
+  appearance tab (Light/Dark/Auto theme applied live, minimise-to-tray and
+  notification toggles). Saves via `ConfigLoader.save_toml`.
+- **Qt first-run setup wizard** — shown on first GUI launch when no config exists,
+  with an SSH connection test; `--tui` keeps the Textual wizard. A password/passphrase
+  prompt now also appears in the GUI when SSH auth is required.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed

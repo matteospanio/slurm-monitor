@@ -14,6 +14,7 @@ filter/sort logic (:func:`get_filtered_jobs`) are lifted from the Textual
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
@@ -262,12 +263,14 @@ class AppController(QObject):
         config: AppConfig,
         demo: bool = False,
         database: Optional[Database] = None,
+        config_path: Optional[Path] = None,
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
         self.demo = demo
         self.database = database
+        self.config_path = config_path
         self.repository = Repository() if database is not None else None
 
         self.sessions: dict[str, ProfileSession] = {
@@ -430,6 +433,18 @@ class AppController(QObject):
         self.jobActionFinished.emit(profile_name, job_id, verb, ok, message)
         if ok:
             self.refresh_profile(profile_name)
+
+    # ── history maintenance ──────────────────────────────────────────
+    def prune_history(self, retention_days: int) -> int:
+        """Delete non-favourite runs older than ``retention_days``; return count.
+
+        A local SQLite delete — fast enough to run inline from the Settings
+        button. Favourites are always kept (see ``Repository.prune``).
+        """
+        if self.database is None or self.repository is None or retention_days <= 0:
+            return 0
+        with self.database.session() as db_session:
+            return self.repository.prune(db_session, retention_days, utcnow())
 
     # ── auth ─────────────────────────────────────────────────────────
     def submit_credentials(self, name: str, password: Optional[str]) -> None:

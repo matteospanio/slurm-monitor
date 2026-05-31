@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from slurmhub.qt.controller import AppController
 from slurmhub.qt.views.cluster_view import ClusterView
 from slurmhub.qt.views.queue_view import QueueView
+from slurmhub.qt.views.settings_view import SettingsView
 
 DOCS_URL = "https://matteospanio.github.io/slurmhub/"
 
@@ -172,7 +173,9 @@ class MainWindow(QMainWindow):
         self._pages["cluster"] = self.cluster_view
 
         self._pages["history"] = _placeholder("History", "Coming next")
-        self._pages["settings"] = _placeholder("Settings", "Coming next")
+
+        self.settings_view = SettingsView(self.controller)
+        self._pages["settings"] = self.settings_view
         self._pages["about"] = _placeholder(
             "SlurmHub", f"v{_app_version()} · {DOCS_URL}"
         )
@@ -188,6 +191,7 @@ class MainWindow(QMainWindow):
         self.controller.jobsUpdated.connect(self._on_jobs_updated)
         self.controller.fetchFailed.connect(self._on_fetch_failed)
         self.controller.jobActionFinished.connect(self._on_job_action_finished)
+        self.controller.authRequired.connect(self._on_auth_required)
 
     def _on_profile_changed(self, name: str) -> None:
         if not name:
@@ -205,6 +209,20 @@ class MainWindow(QMainWindow):
 
     def _on_fetch_failed(self, name: str, message: str) -> None:
         self.statusBar().showMessage(f"[{name}] {message}", 8000)
+
+    def _on_auth_required(self, name: str) -> None:
+        from PySide6.QtWidgets import QInputDialog, QLineEdit as _QLineEdit
+
+        session = self.controller.session(name)
+        host = session.profile.ssh.host if session else name
+        password, ok = QInputDialog.getText(
+            self,
+            "SSH authentication",
+            f"Password or key passphrase for {host}:",
+            _QLineEdit.EchoMode.Password,
+        )
+        if ok and password:
+            self.controller.submit_credentials(name, password)
 
     def _on_job_action_finished(
         self, name: str, job_id: str, verb: str, ok: bool, message: str
