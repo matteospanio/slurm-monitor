@@ -14,12 +14,14 @@ from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSplitter,
     QTableView,
@@ -46,7 +48,8 @@ _TERMINAL_STATES = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}
 
 
 class QueueView(QWidget):
-    jobActivated = Signal(object)  # emits the selected SlurmJob
+    jobActivated = Signal(object)  # emits the selected SlurmJob (open detail)
+    logRequested = Signal(object)  # emits the selected SlurmJob (open log)
 
     def __init__(
         self, controller: AppController, parent: Optional[QWidget] = None
@@ -135,6 +138,8 @@ class QueueView(QWidget):
         )
         self.table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
         self.table.doubleClicked.connect(self._emit_activated)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
 
         delete_sc = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.table)
         delete_sc.activated.connect(self._cancel_selected)
@@ -279,6 +284,72 @@ class QueueView(QWidget):
         job = self.selected_job()
         if job is not None:
             self.jobActivated.emit(job)
+
+    def _show_context_menu(self, pos) -> None:
+        index = self.table.indexAt(pos)
+        if index.isValid():
+            self.table.setCurrentIndex(index)
+        job = self.selected_job()
+        if job is None:
+            return
+        active = job.state not in _TERMINAL_STATES
+
+        menu = QMenu(self)
+        menu.addAction("Details", self._emit_activated)
+        menu.addAction("View log", lambda: self.logRequested.emit(self.selected_job()))
+        menu.addSeparator()
+        if active:
+            menu.addAction("Requeue", self._requeue_selected)
+            if job.state == "PENDING":
+                menu.addAction("Release", self._release_selected)
+            else:
+                menu.addAction("Hold", self._hold_selected)
+        menu.addSeparator()
+        menu.addAction("Copy job ID", self._copy_job_id)
+        menu.addAction("Copy log path", self._copy_log_path)
+        if active:
+            menu.addSeparator()
+            menu.addAction("Cancel (scancel)", self._cancel_selected)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _requeue_selected(self) -> None:
+        job = self.selected_job()
+        profile = self.controller.active_profile
+        if job is None or profile is None:
+            return
+        if confirm(
+            self,
+            "Requeue job",
+            f"Requeue job {job.job_id} ({job.name})? It will be cancelled and "
+            "re-run from the start.",
+            dangerous=True,
+            confirm_label="Requeue",
+        ):
+            self.controller.requeue_job(profile, job.job_id)
+
+    def _hold_selected(self) -> None:
+        job = self.selected_job()
+        profile = self.controller.active_profile
+        if job is not None and profile is not None:
+            self.controller.hold_job(profile, job.job_id)
+
+    def _release_selected(self) -> None:
+        job = self.selected_job()
+        profile = self.controller.active_profile
+        if job is not None and profile is not None:
+            self.controller.release_job(profile, job.job_id)
+
+    def _copy_job_id(self) -> None:
+        job = self.selected_job()
+        if job is not None:
+            QApplication.clipboard().setText(job.job_id)
+
+    def _copy_log_path(self) -> None:
+        job = self.selected_job()
+        session = self.controller.session()
+        if job is not None and session is not None:
+            path = session.path_resolver.resolve_path(job.job_id, job.work_dir)
+            QApplication.clipboard().setText(path)
 
     # ── helpers ──────────────────────────────────────────────────────
     def _select_state_combo(self, state_value: str) -> None:

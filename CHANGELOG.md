@@ -51,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with save.
 - Sub-views use a back-stack on the main window (Back / Esc-style navigation), and an
   open log stream is stopped on back or window close.
+- **System tray & background operation** — a tray icon (Show/Hide, Refresh now, Quit);
+  optional minimise-to-tray on window close (Settings) keeps refresh running in the
+  background. **Desktop notifications** fire when a job reaches a terminal state
+  (completed/failed/…), batched when several finish at once; toggle in Settings.
+- **Extra job actions** — requeue, hold, and release (`scontrol`), plus copy job ID /
+  copy log path and "View log", from a right-click context menu on the queue and as
+  buttons on the Job Detail page.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed

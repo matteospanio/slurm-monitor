@@ -98,11 +98,31 @@ class JobDetailView(QWidget):
 
     def _build_actions(self) -> QHBoxLayout:
         row = QHBoxLayout()
+        active = self.job.state not in _TERMINAL_STATES
         self.cancel_button = QPushButton("Cancel job")
         self.cancel_button.setObjectName("Danger")
-        self.cancel_button.setEnabled(self.job.state not in _TERMINAL_STATES)
+        self.cancel_button.setEnabled(active)
         self.cancel_button.clicked.connect(self._cancel)
         row.addWidget(self.cancel_button)
+
+        self.requeue_button = QPushButton("Requeue")
+        self.requeue_button.setEnabled(active)
+        self.requeue_button.clicked.connect(self._requeue)
+        row.addWidget(self.requeue_button)
+
+        self.hold_button = QPushButton("Hold")
+        self.hold_button.setEnabled(active)
+        self.hold_button.clicked.connect(
+            lambda: self.controller.hold_job(self.profile_name, self.job.job_id)
+        )
+        row.addWidget(self.hold_button)
+
+        self.release_button = QPushButton("Release")
+        self.release_button.setEnabled(active)
+        self.release_button.clicked.connect(
+            lambda: self.controller.release_job(self.profile_name, self.job.job_id)
+        )
+        row.addWidget(self.release_button)
 
         self.fav_button = QPushButton("☆ Favourite")
         self.fav_button.clicked.connect(self._toggle_favourite)
@@ -203,6 +223,16 @@ class JobDetailView(QWidget):
         ):
             self.controller.cancel_job(self.profile_name, self.job.job_id)
             self.navigator.go_back()
+
+    def _requeue(self) -> None:
+        if confirm(
+            self,
+            "Requeue job",
+            f"Requeue job {self.job.job_id} ({self.job.name})?",
+            dangerous=True,
+            confirm_label="Requeue",
+        ):
+            self.controller.requeue_job(self.profile_name, self.job.job_id)
 
     def _update_favourite_button(self) -> None:
         self.fav_button.setText("★ Favourited" if self._favourite else "☆ Favourite")

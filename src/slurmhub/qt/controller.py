@@ -55,6 +55,16 @@ from slurmhub.ssh_wrapper import (
 SINFO_REFRESH_SECONDS = 60.0
 QUEUE_STATS_REFRESH_SECONDS = 30.0
 
+# Terminal job states that trigger a completion notification.
+TERMINAL_STATES = {
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "TIMEOUT",
+    "OUT_OF_MEMORY",
+    "NODE_FAIL",
+}
+
 
 @dataclass
 class FetchResult:
@@ -103,6 +113,10 @@ class ProfileSession:
 
         # Auth handling.
         self._auth_attempts: int = 0
+
+        # Job-state tracking for completion notifications.
+        self._prev_states: dict[str, str] = {}
+        self._states_seen: bool = False
 
         # Per-profile view state (each profile remembers its own view).
         self.state_filter: str = "ALL"
@@ -257,6 +271,9 @@ class AppController(QObject):
     activeProfileChanged = Signal(str)
     # profile_name, job_id, verb, ok, message
     jobActionFinished = Signal(str, str, str, bool, str)
+    # profile_name, list[(job_id, name, state)] — jobs that just reached a
+    # terminal state since the previous refresh.
+    jobsFinished = Signal(str, list)
 
     def __init__(
         self,
@@ -369,6 +386,20 @@ class AppController(QObject):
                 self.fetchFailed.emit(name, str(result.error))
             self.connectionChanged.emit(name)
         else:
+            # Detect jobs that transitioned into a terminal state this cycle.
+            transitions: list[tuple[str, str, str]] = []
+            if session._states_seen:
+                for job in result.jobs:
+                    prev = session._prev_states.get(job.job_id)
+                    if (
+                        prev is not None
+                        and prev not in TERMINAL_STATES
+                        and job.state in TERMINAL_STATES
+                    ):
+                        transitions.append((job.job_id, job.name, job.state))
+            session._prev_states = {j.job_id: j.state for j in result.jobs}
+            session._states_seen = True
+
             session.jobs = result.jobs
             session.queue_stats = result.queue_stats
             if result.sinfo_fetched:
@@ -382,6 +413,8 @@ class AppController(QObject):
             session._auth_attempts = 0
             self.connectionChanged.emit(name)
             self.jobsUpdated.emit(name)
+            if transitions:
+                self.jobsFinished.emit(name, transitions)
 
         self._rearm(name)
 
@@ -426,6 +459,27 @@ class AppController(QObject):
 
         self.run_job_command(
             profile_name, job_id, f"scancel {shlex.quote(job_id)}", "cancel"
+        )
+
+    def requeue_job(self, profile_name: str, job_id: str) -> None:
+        import shlex
+
+        self.run_job_command(
+            profile_name, job_id, f"scontrol requeue {shlex.quote(job_id)}", "requeue"
+        )
+
+    def hold_job(self, profile_name: str, job_id: str) -> None:
+        import shlex
+
+        self.run_job_command(
+            profile_name, job_id, f"scontrol hold {shlex.quote(job_id)}", "hold"
+        )
+
+    def release_job(self, profile_name: str, job_id: str) -> None:
+        import shlex
+
+        self.run_job_command(
+            profile_name, job_id, f"scontrol release {shlex.quote(job_id)}", "release"
         )
 
     def _on_action_result(self, result: tuple) -> None:

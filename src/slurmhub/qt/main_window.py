@@ -9,7 +9,7 @@ shell, routing, and signal plumbing stay.
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
@@ -19,13 +19,16 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QPushButton,
     QStackedWidget,
     QStatusBar,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
+from slurmhub.qt.branding import app_icon
 from slurmhub.qt.controller import AppController
 from slurmhub.qt.views.cluster_view import ClusterView
 from slurmhub.qt.views.history_view import HistoryView
@@ -76,10 +79,14 @@ class MainWindow(QMainWindow):
         self.controller = controller
         self._pages: dict[str, QWidget] = {}
         self._nav_stack: list[QWidget] = []  # sub-view back stack
+        self._force_quit = False
+        self._tray_hint_shown = False
         self.setWindowTitle("SlurmHub")
+        self.setWindowIcon(app_icon())
         self.resize(1120, 720)
         self.setMinimumSize(860, 540)
         self._build_ui()
+        self._tray = self._build_tray()
         self._connect_signals()
         self._sync_active_profile_view()
 
@@ -188,6 +195,43 @@ class MainWindow(QMainWindow):
         # The permanent nav pages are never torn down by go_back().
         self._permanent_pages = set(self._pages.values())
 
+    # ── system tray ──────────────────────────────────────────────────
+    def _build_tray(self) -> "QSystemTrayIcon | None":
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return None
+        tray = QSystemTrayIcon(app_icon(), self)
+        tray.setToolTip("SlurmHub")
+        menu = QMenu()
+        menu.addAction("Show / Hide", self._toggle_visible)
+        menu.addAction("Refresh now", self.controller.force_refresh_active)
+        menu.addSeparator()
+        menu.addAction("Quit", self._quit)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.show()
+        return tray
+
+    def _toggle_visible(self) -> None:
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def _on_tray_activated(self, reason) -> None:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def _quit(self) -> None:
+        self._force_quit = True
+        self.close()
+
     # ── sub-view navigation ──────────────────────────────────────────
     def open_subview(self, widget: QWidget) -> None:
         """Push a transient full-page sub-view (Job Detail / Log / Batch)."""
@@ -213,6 +257,14 @@ class MainWindow(QMainWindow):
             return
         self.open_subview(JobDetailView(self.controller, profile, job, self))
 
+    def _open_log(self, job) -> None:
+        from slurmhub.qt.views.log_viewer import LogViewer
+
+        profile = self.controller.active_profile
+        if profile is None or job is None:
+            return
+        self.open_subview(LogViewer(self.controller, profile, job, self))
+
     def _on_nav_changed(self, row: int) -> None:
         if row < 0:
             return
@@ -230,7 +282,40 @@ class MainWindow(QMainWindow):
                 self.stack.removeWidget(widget)
                 widget.deleteLater()
 
+    def _on_jobs_finished(self, name: str, transitions: list) -> None:
+        if not transitions:
+            return
+        settings = QSettings("slurmhub", "SlurmHub")
+        if len(transitions) == 1:
+            job_id, job_name, state = transitions[0]
+            title = f"Job {job_id} {state.lower()}"
+            body = job_name
+        else:
+            title = f"{len(transitions)} jobs finished"
+            body = ", ".join(
+                f"{jid} {state.lower()}" for jid, _n, state in transitions[:5]
+            )
+        self.statusBar().showMessage(f"{title} — {body}", 8000)
+        if (
+            self._tray is not None
+            and settings.value("notify/enabled", True, type=bool)
+        ):
+            self._tray.showMessage(title, body)
+
     def closeEvent(self, event) -> None:
+        minimize = QSettings("slurmhub", "SlurmHub").value(
+            "tray/minimize", False, type=bool
+        )
+        if minimize and self._tray is not None and not self._force_quit:
+            event.ignore()
+            self.hide()
+            if not self._tray_hint_shown:
+                self._tray.showMessage(
+                    "SlurmHub",
+                    "Still running in the tray — right-click the icon to quit.",
+                )
+                self._tray_hint_shown = True
+            return
         # Stop any open log stream before the app tears down.
         self._discard_subviews()
         super().closeEvent(event)
@@ -239,12 +324,14 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.nav_list.currentRowChanged.connect(self._on_nav_changed)
         self.queue_view.jobActivated.connect(self._open_job_detail)
+        self.queue_view.logRequested.connect(self._open_log)
         self.profile_switcher.currentTextChanged.connect(self._on_profile_changed)
         self.controller.connectionChanged.connect(self._on_connection_changed)
         self.controller.jobsUpdated.connect(self._on_jobs_updated)
         self.controller.fetchFailed.connect(self._on_fetch_failed)
         self.controller.jobActionFinished.connect(self._on_job_action_finished)
         self.controller.authRequired.connect(self._on_auth_required)
+        self.controller.jobsFinished.connect(self._on_jobs_finished)
 
     def _on_profile_changed(self, name: str) -> None:
         if not name:
