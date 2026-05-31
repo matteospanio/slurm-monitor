@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matching glyphs for the other sidebar entries (queue, cluster, history, about), the
   Documentation link, and toolbar buttons (details, cancel, refresh, favourite, note).
   The sidebar no longer shows a stray scrollbar when only a few entries are present.
+- **Instant startup from cache** — the last successful fetch (jobs, queue stats,
+  cluster capacity / partitions / nodes) is cached per profile under
+  `<config-dir>/cache/` and painted immediately on the next launch while fresh data
+  loads (works even when the history database is disabled). The cached view is
+  **read-only**: state-changing actions (scancel / requeue / hold / release) stay
+  disabled and the header and queue show a "⤓ cached … refreshing" hint until the
+  first live refresh lands — so a possibly-stale job is never acted on.
 - New `slurmhub.qt` package holding the entire Qt view layer (`controller`, `theme`,
   `workers`, `main_window`, `app`). The SSH, parser, history-database, and config
   layers are reused unchanged — blocking calls run on a `QThreadPool` and periodic

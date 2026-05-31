@@ -235,14 +235,18 @@ class QueueView(QWidget):
             parts.append(f"CPU {cap.cpu_percentage:.0f}%")
             if cap.gpus_total:
                 parts.append(f"GPU {cap.gpu_percentage:.0f}%")
-        if session.last_updated:
+        if session.is_cached:
+            parts.append(f"⤓ cached {session.last_updated} (refreshing…)")
+        elif session.last_updated:
             parts.append(f"updated {session.last_updated}")
         self.summary.setText("   •   ".join(parts) if parts else "Loading…")
 
     def _update_detail(self, job: Optional[SlurmJob]) -> None:
+        session = self.controller.session()
+        cached = session is not None and session.is_cached
         self.details_button.setEnabled(job is not None)
         self.cancel_button.setEnabled(
-            job is not None and job.state not in _TERMINAL_STATES
+            job is not None and job.state not in _TERMINAL_STATES and not cached
         )
         if job is None:
             self.detail.setText("Select a job to see details.")
@@ -296,7 +300,10 @@ class QueueView(QWidget):
         job = self.selected_job()
         if job is None:
             return
-        active = job.state not in _TERMINAL_STATES
+        session = self.controller.session()
+        cached = session is not None and session.is_cached
+        # While showing cached data, only read-only actions are offered.
+        active = job.state not in _TERMINAL_STATES and not cached
 
         menu = QMenu(self)
         menu.addAction("Details", self._emit_activated)

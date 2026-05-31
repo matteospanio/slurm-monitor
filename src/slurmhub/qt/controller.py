@@ -19,8 +19,9 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
 
-from slurmhub.config import AppConfig, ProfileConfig
+from slurmhub.config import AppConfig, ConfigLoader, ProfileConfig
 from slurmhub.db import Database, Repository
+from slurmhub.snapshot_cache import CachedSnapshot, SnapshotCache
 from slurmhub.db.models import utcnow
 from slurmhub.job_aggregator import (
     JobAggregator,
@@ -104,6 +105,9 @@ class ProfileSession:
         self.error_message: Optional[str] = None
         self.partial_errors: dict[str, str] = {}
         self.last_updated: Optional[str] = None
+        # True while showing last-known cached data (no live fetch has yet
+        # succeeded this session). State-changing actions stay disabled.
+        self.is_cached = False
 
         # Internal fetch caches / cadences.
         self._sacct_cache: list[SlurmJob] = []
@@ -297,6 +301,14 @@ class AppController(QObject):
         self._active: Optional[str] = next(iter(self.sessions), None)
         self._timers: dict[str, QTimer] = {}
 
+        # Filesystem snapshot cache (disabled in demo so fixtures never touch
+        # the real config dir). Lives next to the config file.
+        if demo:
+            self._cache: Optional[SnapshotCache] = None
+        else:
+            base = config_path.parent if config_path else ConfigLoader.get_config_dir()
+            self._cache = SnapshotCache(base / "cache")
+
         self._pool = QThreadPool.globalInstance()
         # Bound thread count so N profiles + auxiliary tasks never starve.
         self._pool.setMaxThreadCount(max(4, len(self.sessions) + 2))
@@ -320,13 +332,35 @@ class AppController(QObject):
 
     # ── lifecycle ────────────────────────────────────────────────────
     def start(self) -> None:
-        """Create per-profile refresh timers and kick an initial refresh."""
+        """Paint cached state, then create refresh timers and kick a refresh."""
+        self._load_cached_snapshots()
         for name in self.sessions:
             timer = QTimer(self)
             timer.setSingleShot(True)
             timer.timeout.connect(lambda n=name: self.refresh_profile(n))
             self._timers[name] = timer
             self.refresh_profile(name)
+
+    def _load_cached_snapshots(self) -> None:
+        """Populate sessions from disk so the UI has something to show at once."""
+        if self._cache is None:
+            return
+        for name, session in self.sessions.items():
+            snapshot = self._cache.load(name)
+            if snapshot is None:
+                continue
+            session.jobs = snapshot.jobs
+            session.queue_stats = snapshot.queue_stats
+            session.cluster_capacity = snapshot.cluster_capacity
+            session.partitions = snapshot.partitions
+            session.nodes = snapshot.nodes
+            session.last_updated = snapshot.cached_at
+            session.is_cached = True
+            # Leave _states_seen False so the first live refresh sets the
+            # notification baseline silently (no alerts for jobs that finished
+            # while the app was closed).
+            self.connectionChanged.emit(name)
+            self.jobsUpdated.emit(name)
 
     def shutdown(self) -> None:
         """Stop timers, close SSH connections, and release the database."""
@@ -411,12 +445,32 @@ class AppController(QObject):
             session.error_message = None
             session.partial_errors = result.partial_errors
             session._auth_attempts = 0
+            session.is_cached = False  # live data has now arrived
+            self._save_snapshot(name, session)
             self.connectionChanged.emit(name)
             self.jobsUpdated.emit(name)
             if transitions:
                 self.jobsFinished.emit(name, transitions)
 
         self._rearm(name)
+
+    def _save_snapshot(self, name: str, session: ProfileSession) -> None:
+        """Persist the session's current displayable state for next launch."""
+        if self._cache is None:
+            return
+        from datetime import datetime as _dt
+
+        self._cache.save(
+            CachedSnapshot(
+                profile_name=name,
+                cached_at=_dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+                jobs=list(session.jobs),
+                queue_stats=session.queue_stats,
+                cluster_capacity=session.cluster_capacity,
+                partitions=list(session.partitions),
+                nodes=list(session.nodes),
+            )
+        )
 
     def _rearm(self, name: str) -> None:
         timer = self._timers.get(name)
@@ -436,6 +490,13 @@ class AppController(QObject):
         """
         session = self.sessions.get(profile_name)
         if session is None:
+            return
+        if session.is_cached:
+            # Showing stale cached data — refuse actions whose target state is
+            # unknown until a live refresh confirms it.
+            self.jobActionFinished.emit(
+                profile_name, job_id, verb, False, "still loading live data"
+            )
             return
         timeout = session.profile.ssh_timeout
         client = session.ssh_client

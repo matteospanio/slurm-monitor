@@ -98,7 +98,9 @@ class JobDetailView(QWidget):
 
     def _build_actions(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        active = self.job.state not in _TERMINAL_STATES
+        session = self.controller.session(self.profile_name)
+        cached = session is not None and session.is_cached
+        active = self.job.state not in _TERMINAL_STATES and not cached
         self.cancel_button = QPushButton("Cancel job")
         self.cancel_button.setObjectName("Danger")
         self.cancel_button.setEnabled(active)

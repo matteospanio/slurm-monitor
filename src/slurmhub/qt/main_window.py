@@ -434,6 +434,8 @@ class MainWindow(QMainWindow):
         self.header_host.setText(session.profile.ssh.host)
         if session.error_message:
             text, state = f"✕ {session.error_message}", "error"
+        elif session.is_cached:
+            text, state = f"⤓ cached {session.last_updated} · refreshing…", "loading"
         elif session.is_loading:
             text, state = "↻ refreshing…", "loading"
         elif session.last_updated:
