@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Usage tab showing GPU/CPU/memory-hour totals, average measured GPU utilisation, and
   a per-profile resource-hours bar chart (QtCharts). Reads run on worker threads via
   `Repository.query_runs` / `aggregate_usage`.
+- **Job Detail page** — full per-job view (time/memory/per-GPU utilisation bars,
+  partition/nodes/timestamps, command, log paths) from `fetch_job_details`, with
+  scancel, favourite/note (history DB), and buttons to open the log and batch script.
+  Reached by double-click or "Details" from the Queue.
+- **Log Viewer** — streams `tail -f` over SSH on a dedicated thread, with follow
+  mode, search (next/prev), save, and copy-path.
+- **Batch Script viewer** — read-only view of a job's submitted sbatch script,
+  with save.
+- Sub-views use a back-stack on the main window (Back / Esc-style navigation), and an
+  open log stream is stopped on back or window close.
 - `pytest-qt` (dev) and a headless `tests/qt/` suite (`QT_QPA_PLATFORM=offscreen`).
 
 ### Changed

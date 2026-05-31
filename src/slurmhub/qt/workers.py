@@ -8,9 +8,9 @@ through queued signal connections. This is the Qt analogue of Textual's
 ``run_worker(thread=True)`` + ``on_worker_state_changed``.
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QObject, QRunnable, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, Signal, Slot, QThreadPool
 
 
 class WorkerSignals(QObject):
@@ -38,3 +38,22 @@ class FetchTask(QRunnable):
             self.signals.failed.emit(exc)
         else:
             self.signals.finished.emit(result)
+
+
+def run_async(
+    fn: Callable[[], Any],
+    on_finished: Callable[[Any], None],
+    on_failed: Optional[Callable[[Exception], None]] = None,
+) -> FetchTask:
+    """Run ``fn`` on the global pool and deliver the result to ``on_finished``.
+
+    IMPORTANT: ``on_finished`` / ``on_failed`` must be **bound methods of a
+    QObject** (e.g. ``self._on_loaded``), not bare lambdas — a functor with no
+    receiver QObject is not queued onto the main thread for a cross-thread emit.
+    """
+    task = FetchTask(fn)
+    task.signals.finished.connect(on_finished)
+    if on_failed is not None:
+        task.signals.failed.connect(on_failed)
+    QThreadPool.globalInstance().start(task)
+    return task

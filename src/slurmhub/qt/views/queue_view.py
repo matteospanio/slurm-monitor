@@ -10,7 +10,7 @@ controller behind a confirmation. All data comes from the active
 import html
 from typing import Optional
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt
+from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -46,6 +46,8 @@ _TERMINAL_STATES = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}
 
 
 class QueueView(QWidget):
+    jobActivated = Signal(object)  # emits the selected SlurmJob
+
     def __init__(
         self, controller: AppController, parent: Optional[QWidget] = None
     ) -> None:
@@ -91,6 +93,11 @@ class QueueView(QWidget):
         self.search.textChanged.connect(self._on_search_changed)
         bar.addWidget(self.search, 1)
 
+        self.details_button = QPushButton("Details")
+        self.details_button.setEnabled(False)
+        self.details_button.clicked.connect(self._emit_activated)
+        bar.addWidget(self.details_button)
+
         self.cancel_button = QPushButton("Cancel job")
         self.cancel_button.setObjectName("Danger")
         self.cancel_button.setEnabled(False)
@@ -127,7 +134,7 @@ class QueueView(QWidget):
             1, QHeaderView.ResizeMode.Stretch  # Name column expands
         )
         self.table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
-        self.table.doubleClicked.connect(self._cancel_or_noop_placeholder)
+        self.table.doubleClicked.connect(self._emit_activated)
 
         delete_sc = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.table)
         delete_sc.activated.connect(self._cancel_selected)
@@ -224,6 +231,7 @@ class QueueView(QWidget):
         self.summary.setText("   •   ".join(parts) if parts else "Loading…")
 
     def _update_detail(self, job: Optional[SlurmJob]) -> None:
+        self.details_button.setEnabled(job is not None)
         self.cancel_button.setEnabled(
             job is not None and job.state not in _TERMINAL_STATES
         )
@@ -267,10 +275,10 @@ class QueueView(QWidget):
             if profile:
                 self.controller.cancel_job(profile, job.job_id)
 
-    def _cancel_or_noop_placeholder(self, *_args) -> None:
-        # Double-click opens the full Job Detail page (added in a later phase).
-        # For now it is a no-op so the gesture is harmless.
-        pass
+    def _emit_activated(self, *_args) -> None:
+        job = self.selected_job()
+        if job is not None:
+            self.jobActivated.emit(job)
 
     # ── helpers ──────────────────────────────────────────────────────
     def _select_state_combo(self, state_value: str) -> None:

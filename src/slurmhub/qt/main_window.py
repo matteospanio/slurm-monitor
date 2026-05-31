@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.controller = controller
         self._pages: dict[str, QWidget] = {}
+        self._nav_stack: list[QWidget] = []  # sub-view back stack
         self.setWindowTitle("SlurmHub")
         self.resize(1120, 720)
         self.setMinimumSize(860, 540)
@@ -184,10 +185,60 @@ class MainWindow(QMainWindow):
 
         for _label, key in NAV_ITEMS:
             self.stack.addWidget(self._pages[key])
+        # The permanent nav pages are never torn down by go_back().
+        self._permanent_pages = set(self._pages.values())
+
+    # ── sub-view navigation ──────────────────────────────────────────
+    def open_subview(self, widget: QWidget) -> None:
+        """Push a transient full-page sub-view (Job Detail / Log / Batch)."""
+        self._nav_stack.append(self.stack.currentWidget())
+        self.stack.addWidget(widget)
+        self.stack.setCurrentWidget(widget)
+
+    def go_back(self) -> None:
+        current = self.stack.currentWidget()
+        target = self._nav_stack.pop() if self._nav_stack else self.stack.widget(0)
+        self.stack.setCurrentWidget(target)
+        if current is not None and current not in self._permanent_pages:
+            if hasattr(current, "teardown"):
+                current.teardown()
+            self.stack.removeWidget(current)
+            current.deleteLater()
+
+    def _open_job_detail(self, job) -> None:
+        from slurmhub.qt.views.job_detail_view import JobDetailView
+
+        profile = self.controller.active_profile
+        if profile is None:
+            return
+        self.open_subview(JobDetailView(self.controller, profile, job, self))
+
+    def _on_nav_changed(self, row: int) -> None:
+        if row < 0:
+            return
+        self._discard_subviews()
+        self.stack.setCurrentIndex(row)
+
+    def _discard_subviews(self) -> None:
+        """Tear down and remove every transient sub-view; clear the back stack."""
+        self._nav_stack.clear()
+        for i in reversed(range(self.stack.count())):
+            widget = self.stack.widget(i)
+            if widget not in self._permanent_pages:
+                if hasattr(widget, "teardown"):
+                    widget.teardown()
+                self.stack.removeWidget(widget)
+                widget.deleteLater()
+
+    def closeEvent(self, event) -> None:
+        # Stop any open log stream before the app tears down.
+        self._discard_subviews()
+        super().closeEvent(event)
 
     # ── signals ──────────────────────────────────────────────────────
     def _connect_signals(self) -> None:
-        self.nav_list.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav_list.currentRowChanged.connect(self._on_nav_changed)
+        self.queue_view.jobActivated.connect(self._open_job_detail)
         self.profile_switcher.currentTextChanged.connect(self._on_profile_changed)
         self.controller.connectionChanged.connect(self._on_connection_changed)
         self.controller.jobsUpdated.connect(self._on_jobs_updated)
